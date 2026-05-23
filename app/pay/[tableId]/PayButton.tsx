@@ -5,12 +5,15 @@ import { useState } from "react";
 interface PayButtonProps {
   checkId: string;
   amount: number;
+  tipAmount: number;
   splitMethod: string;
   selectedItems?: string[];
 }
 
-export function PayButton({ checkId, amount, splitMethod, selectedItems }: PayButtonProps) {
+export function PayButton({ checkId, amount, tipAmount, splitMethod, selectedItems }: PayButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
+
+  const totalWithTip = amount + tipAmount;
 
   const handlePayment = async () => {
     setIsLoading(true);
@@ -25,6 +28,7 @@ export function PayButton({ checkId, amount, splitMethod, selectedItems }: PayBu
           checkId,
           splitMethod,
           amountCents: Math.round(amount * 100),
+          tipCents: Math.round(tipAmount * 100),
           selectedItems,
         }),
       });
@@ -54,7 +58,7 @@ export function PayButton({ checkId, amount, splitMethod, selectedItems }: PayBu
       disabled={isLoading}
       className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-4 rounded-xl shadow-lg transition-colors"
     >
-      {isLoading ? "Processing..." : `Pay $${amount.toFixed(2)}`}
+      {isLoading ? "Processing..." : `Pay $${totalWithTip.toFixed(2)}`}
     </button>
   );
 }

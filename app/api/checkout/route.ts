@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from "uuid";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { checkId, splitMethod, amountCents, selectedItems } = body;
+    const { checkId, splitMethod, amountCents, tipCents, selectedItems } = body;
 
     if (!checkId || !splitMethod) {
       return NextResponse.json(
@@ -22,6 +22,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Default tip to 0 if not provided
+    const finalTipCents = tipCents || 0;
 
     // Fetch the check
     const check = await db.query.checks.findFirst({
@@ -120,8 +123,8 @@ export async function POST(request: NextRequest) {
       .values({
         checkId: check.id,
         amountCents: finalAmountCents,
-        tipCents: 0, // We'll add tip selection in Stage 9
-        totalCents: finalAmountCents,
+        tipCents: finalTipCents,
+        totalCents: finalAmountCents + finalTipCents,
         splitMethod: splitMethod as any,
         status: "pending",
         guestSessionId,
@@ -129,22 +132,39 @@ export async function POST(request: NextRequest) {
       .returning();
 
     // Create Stripe Checkout session
+    const lineItems = [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `${check.venue.name} - Check #${check.checkNumber}`,
+            description: `${splitMethod === "full" ? "Full payment" : splitMethod === "even" ? "Split evenly" : splitMethod === "by_item" ? "Split by item" : "Partial payment"}`,
+          },
+          unit_amount: finalAmountCents,
+        },
+        quantity: 1,
+      },
+    ];
+
+    // Add tip as a separate line item if there is one
+    if (finalTipCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: "Tip",
+            description: "Gratuity for service",
+          },
+          unit_amount: finalTipCents,
+        },
+        quantity: 1,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: `${check.venue.name} - Check #${check.checkNumber}`,
-              description: `${splitMethod === "full" ? "Full payment" : splitMethod === "even" ? "Split evenly" : splitMethod === "by_item" ? "Split by item" : "Partial payment"}`,
-            },
-            unit_amount: finalAmountCents,
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       success_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/pay/${check.tableId}`,
       metadata: {
