@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { checks, checkItems, venues, tables } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { PayButton } from "./PayButton";
 
 interface PageProps {
   params: Promise<{ tableId: string }>;
@@ -82,17 +83,7 @@ export default async function PayPage({ params }: PageProps) {
         </div>
 
         {/* Pay Button */}
-        <form action="/api/checkout" method="POST">
-          <input type="hidden" name="checkId" value={check.id} />
-          <input type="hidden" name="splitMethod" value="full" />
-          
-          <button
-            type="submit"
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-4 rounded-xl shadow-lg transition-colors"
-          >
-            Pay ${total.toFixed(2)}
-          </button>
-        </form>
+        <PayButton checkId={check.id} amount={total} />
 
         <p className="text-center text-purple-200 text-sm mt-4">
           Secure payment powered by Stripe

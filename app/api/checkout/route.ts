@@ -11,9 +11,8 @@ import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const checkId = formData.get("checkId") as string;
-    const splitMethod = formData.get("splitMethod") as string;
+    const body = await request.json();
+    const { checkId, splitMethod } = body;
 
     if (!checkId || !splitMethod) {
       return NextResponse.json(
@@ -97,8 +96,8 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(payments.id, payment.id));
 
-    // Redirect to Stripe Checkout
-    return NextResponse.redirect(session.url!);
+    // Return the checkout URL as JSON
+    return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Checkout error:", error);
     return NextResponse.json(
