@@ -5,9 +5,11 @@ import { useState } from "react";
 interface PayButtonProps {
   checkId: string;
   amount: number;
+  splitMethod: string;
+  selectedItems?: string[];
 }
 
-export function PayButton({ checkId, amount }: PayButtonProps) {
+export function PayButton({ checkId, amount, splitMethod, selectedItems }: PayButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePayment = async () => {
@@ -21,7 +23,9 @@ export function PayButton({ checkId, amount }: PayButtonProps) {
         },
         body: JSON.stringify({
           checkId,
-          splitMethod: "full",
+          splitMethod,
+          amountCents: Math.round(amount * 100),
+          selectedItems,
         }),
       });
 
@@ -30,12 +34,16 @@ export function PayButton({ checkId, amount }: PayButtonProps) {
       if (data.url) {
         // Redirect to Stripe Checkout
         window.location.href = data.url;
+      } else if (data.error) {
+        alert(data.error);
+        setIsLoading(false);
       } else {
         console.error("No checkout URL received");
         setIsLoading(false);
       }
     } catch (error) {
       console.error("Payment error:", error);
+      alert("Payment failed. Please try again.");
       setIsLoading(false);
     }
   };

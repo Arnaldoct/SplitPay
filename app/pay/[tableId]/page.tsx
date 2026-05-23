@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { checks, checkItems, venues, tables } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { PayButton } from "./PayButton";
+import { SplitModeSelector } from "./SplitModeSelector";
 
 interface PageProps {
   params: Promise<{ tableId: string }>;
@@ -82,8 +82,18 @@ export default async function PayPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Pay Button */}
-        <PayButton checkId={check.id} amount={total} />
+        {/* Split Mode Selector */}
+        <SplitModeSelector
+          checkId={check.id}
+          totalCents={check.totalCents}
+          items={items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            totalCents: item.totalCents,
+            claimedCents: item.claimedCents,
+          }))}
+        />
 
         <p className="text-center text-purple-200 text-sm mt-4">
           Secure payment powered by Stripe

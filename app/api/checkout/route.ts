@@ -1,18 +1,20 @@
 /**
  * API Route: Create Stripe Checkout Session
  * Creates a hosted Checkout session for the guest to pay their check
+ * Handles all split methods: full, even, by_item, custom
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { db } from "@/lib/db";
-import { checks, payments } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { checks, payments, claims, checkItems } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { checkId, splitMethod } = body;
+    const { checkId, splitMethod, amountCents, selectedItems } = body;
 
     if (!checkId || !splitMethod) {
       return NextResponse.json(
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
       where: eq(checks.id, checkId),
       with: {
         venue: true,
+        checkItems: true,
       },
     });
 
@@ -33,21 +36,82 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Check not found" }, { status: 404 });
     }
 
-    if (check.status !== "open") {
+    if (check.status === "paid") {
       return NextResponse.json(
-        { error: "Check is not open" },
+        { error: "Check is already fully paid" },
         { status: 400 }
       );
     }
 
-    // Calculate amount (for "full" split method, it's the full remaining amount)
-    const amountCents = check.totalCents - check.paidCents;
+    // Calculate amount based on split method
+    let finalAmountCents: number;
+    
+    if (splitMethod === "full") {
+      finalAmountCents = check.totalCents - check.paidCents;
+    } else if (splitMethod === "by_item") {
+      if (!selectedItems || selectedItems.length === 0) {
+        return NextResponse.json(
+          { error: "No items selected" },
+          { status: 400 }
+        );
+      }
+      
+      // Calculate total from selected items (minus what's already claimed)
+      const items = check.checkItems.filter((item) =>
+        selectedItems.includes(item.id)
+      );
+      finalAmountCents = items.reduce(
+        (sum, item) => sum + (item.totalCents - item.claimedCents),
+        0
+      );
+    } else {
+      // even or custom - use provided amount
+      finalAmountCents = amountCents;
+    }
 
-    if (amountCents <= 0) {
+    if (finalAmountCents <= 0) {
       return NextResponse.json(
-        { error: "Check is already paid" },
+        { error: "Invalid amount" },
         { status: 400 }
       );
+    }
+
+    const remainingAmount = check.totalCents - check.paidCents;
+    if (finalAmountCents > remainingAmount) {
+      return NextResponse.json(
+        { error: "Amount exceeds remaining balance" },
+        { status: 400 }
+      );
+    }
+
+    // Generate guest session ID for tracking
+    const guestSessionId = uuidv4();
+
+    // For split-by-item, create claims to lock the items
+    if (splitMethod === "by_item" && selectedItems) {
+      for (const itemId of selectedItems) {
+        const item = check.checkItems.find((i) => i.id === itemId);
+        if (item) {
+          const claimAmount = item.totalCents - item.claimedCents;
+          
+          if (claimAmount > 0) {
+            // Create claim
+            await db.insert(claims).values({
+              checkItemId: itemId,
+              guestSessionId,
+              amountCents: claimAmount,
+            });
+
+            // Update item claimed amount
+            await db
+              .update(checkItems)
+              .set({
+                claimedCents: sql`${checkItems.claimedCents} + ${claimAmount}`,
+              })
+              .where(eq(checkItems.id, itemId));
+          }
+        }
+      }
     }
 
     // Create payment record
@@ -55,11 +119,12 @@ export async function POST(request: NextRequest) {
       .insert(payments)
       .values({
         checkId: check.id,
-        amountCents,
+        amountCents: finalAmountCents,
         tipCents: 0, // We'll add tip selection in Stage 9
-        totalCents: amountCents,
+        totalCents: finalAmountCents,
         splitMethod: splitMethod as any,
         status: "pending",
+        guestSessionId,
       })
       .returning();
 
@@ -73,9 +138,9 @@ export async function POST(request: NextRequest) {
             currency: "usd",
             product_data: {
               name: `${check.venue.name} - Check #${check.checkNumber}`,
-              description: `Payment for Table ${check.tableId}`,
+              description: `${splitMethod === "full" ? "Full payment" : splitMethod === "even" ? "Split evenly" : splitMethod === "by_item" ? "Split by item" : "Partial payment"}`,
             },
-            unit_amount: amountCents,
+            unit_amount: finalAmountCents,
           },
           quantity: 1,
         },
@@ -85,6 +150,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         paymentId: payment.id,
         checkId: check.id,
+        splitMethod,
       },
     });
 
