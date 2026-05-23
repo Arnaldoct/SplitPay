@@ -3,13 +3,35 @@ import { checks, checkItems, venues, tables } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { SplitModeSelector } from "./SplitModeSelector";
+import { Suspense } from "react";
 
 interface PageProps {
   params: Promise<{ tableId: string }>;
 }
 
-export default async function PayPage({ params }: PageProps) {
-  const { tableId } = await params;
+// Loading component
+function CheckSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950">
+      <div className="max-w-md mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <div className="h-8 bg-purple-700 rounded w-48 mx-auto mb-2 animate-pulse"></div>
+          <div className="h-4 bg-purple-700 rounded w-24 mx-auto animate-pulse"></div>
+        </div>
+        <div className="bg-white rounded-2xl shadow-2xl p-6">
+          <div className="h-6 bg-gray-200 rounded w-32 mb-4 animate-pulse"></div>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 bg-gray-100 rounded animate-pulse"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function CheckContent({ tableId }: { tableId: string }) {
 
   // Fetch the open check for this table
   const check = await db.query.checks.findFirst({
@@ -100,5 +122,15 @@ export default async function PayPage({ params }: PageProps) {
         </p>
       </div>
     </div>
+  );
+}
+
+export default async function PayPage({ params }: PageProps) {
+  const { tableId } = await params;
+
+  return (
+    <Suspense fallback={<CheckSkeleton />}>
+      <CheckContent tableId={tableId} />
+    </Suspense>
   );
 }
