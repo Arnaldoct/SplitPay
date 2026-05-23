@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { payments, checks } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import { sendReceipt } from "@/lib/email";
 
 // Disable body parsing so we can verify webhook signature
 export const runtime = "nodejs";
@@ -77,13 +78,19 @@ export async function POST(request: NextRequest) {
         // Get the payment to update the check
         const payment = await db.query.payments.findFirst({
           where: eq(payments.id, paymentId),
+          with: {
+            check: {
+              with: {
+                venue: true,
+                table: true,
+              },
+            },
+          },
         });
 
         if (payment) {
           // Update check paid amount
-          const check = await db.query.checks.findFirst({
-            where: eq(checks.id, payment.checkId),
-          });
+          const check = payment.check;
 
           if (check) {
             const newPaidCents = check.paidCents + payment.totalCents;
@@ -94,12 +101,33 @@ export async function POST(request: NextRequest) {
               .update(checks)
               .set({
                 paidCents: newPaidCents,
+                tipCents: check.tipCents + payment.tipCents,
                 status: newStatus,
                 closedAt: newStatus === "paid" ? new Date() : check.closedAt,
               })
               .where(eq(checks.id, payment.checkId));
 
             console.log(`✅ Payment ${paymentId} succeeded. Check ${check.id} is now ${newStatus}`);
+
+            // Send receipt email if guest provided email
+            if (payment.guestEmail) {
+              try {
+                await sendReceipt({
+                  guestEmail: payment.guestEmail,
+                  venueName: check.venue.name,
+                  checkNumber: check.checkNumber || "N/A",
+                  tableNumber: check.table?.tableNumber || "N/A",
+                  amountCents: payment.amountCents,
+                  tipCents: payment.tipCents,
+                  totalCents: payment.totalCents,
+                  splitMethod: payment.splitMethod,
+                  paymentDate: payment.completedAt || new Date(),
+                });
+              } catch (error) {
+                console.error("Failed to send receipt email:", error);
+                // Don't fail the webhook if email fails
+              }
+            }
           }
         }
 

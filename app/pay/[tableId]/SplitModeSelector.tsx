@@ -28,6 +28,7 @@ export function SplitModeSelector({
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [selectedTipPercent, setSelectedTipPercent] = useState<number | null>(18);
   const [customTip, setCustomTip] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
 
   const total = totalCents / 100;
   const tipSuggestions = [15, 18, 20, 22, 0]; // 0 = No tip
@@ -242,6 +243,22 @@ export function SplitModeSelector({
         </div>
       )}
 
+      {/* Email for Receipt (Optional) */}
+      {isValid && amount > 0 && (
+        <div className="pt-4 border-t border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Email for receipt (optional)
+          </label>
+          <input
+            type="email"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
+        </div>
+      )}
+
       {/* Tip Selection */}
       {isValid && amount > 0 && (
         <div className="space-y-4 pt-4 border-t border-gray-200">
@@ -318,6 +335,7 @@ export function SplitModeSelector({
             tipAmount={tipAmount}
             splitMethod={selectedMode}
             selectedItems={selectedMode === "by_item" ? Array.from(selectedItems) : undefined}
+            guestEmail={guestEmail}
           />
         ) : (
           <button

@@ -8,9 +8,10 @@ interface PayButtonProps {
   tipAmount: number;
   splitMethod: string;
   selectedItems?: string[];
+  guestEmail?: string;
 }
 
-export function PayButton({ checkId, amount, tipAmount, splitMethod, selectedItems }: PayButtonProps) {
+export function PayButton({ checkId, amount, tipAmount, splitMethod, selectedItems, guestEmail }: PayButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const totalWithTip = amount + tipAmount;
@@ -30,6 +31,7 @@ export function PayButton({ checkId, amount, tipAmount, splitMethod, selectedIte
           amountCents: Math.round(amount * 100),
           tipCents: Math.round(tipAmount * 100),
           selectedItems,
+          guestEmail: guestEmail || undefined,
         }),
       });
 

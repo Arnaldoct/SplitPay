@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from "uuid";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { checkId, splitMethod, amountCents, tipCents, selectedItems } = body;
+    const { checkId, splitMethod, amountCents, tipCents, selectedItems, guestEmail } = body;
 
     if (!checkId || !splitMethod) {
       return NextResponse.json(
@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
         splitMethod: splitMethod as any,
         status: "pending",
         guestSessionId,
+        guestEmail: guestEmail || null,
       })
       .returning();
 
