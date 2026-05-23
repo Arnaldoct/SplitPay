@@ -8,4 +8,5 @@
 export * from "./adapter";
 export * from "./manual-adapter";
 export * from "./square-adapter";
+export * from "./toast-adapter";
 export * from "./factory";

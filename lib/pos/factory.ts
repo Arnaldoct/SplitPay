@@ -8,6 +8,7 @@
 import { POSAdapter, POSAdapterConfig } from "./adapter";
 import { ManualAdapter } from "./manual-adapter";
 import { SquareAdapter } from "./square-adapter";
+import { ToastAdapter } from "./toast-adapter";
 import { db } from "../db";
 import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -34,13 +35,12 @@ export async function createPOSAdapter(venueId: string): Promise<POSAdapter> {
     case "square":
       return new SquareAdapter(config);
 
+    case "toast":
+      return new ToastAdapter(config);
+
     case "clover":
       // TODO: Implement CloverAdapter in Stage 12
       throw new Error("Clover integration not yet implemented");
-
-    case "toast":
-      // TODO: Implement ToastAdapter
-      throw new Error("Toast integration not yet implemented");
 
     case "manual":
     default:
@@ -58,6 +58,9 @@ export function createPOSAdapterByProvider(
   switch (provider) {
     case "square":
       return new SquareAdapter(config);
+
+    case "toast":
+      return new ToastAdapter(config);
 
     case "manual":
       return new ManualAdapter(config);
