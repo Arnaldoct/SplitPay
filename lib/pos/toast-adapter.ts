@@ -15,15 +15,18 @@ export class ToastAdapter implements POSAdapter {
     throw new Error("Toast integration not yet implemented. Use manual mode.");
   }
 
-  async getOpenCheck(tableId: string): Promise<POSCheck | null> {
+  async getCheck(externalId: string): Promise<POSCheck | null> {
+    throw new Error("Toast integration not implemented");
+  }
+
+  async getOpenChecks(): Promise<POSCheck[]> {
     throw new Error("Toast integration not implemented");
   }
 
   async recordPayment(
-    checkId: string,
+    checkExternalId: string,
     amountCents: number,
-    tipCents: number,
-    paymentIntentId: string
+    paymentId: string
   ): Promise<void> {
     throw new Error("Toast integration not implemented");
   }
