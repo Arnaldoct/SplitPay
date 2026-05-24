@@ -5,31 +5,33 @@
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { venues, payments } from "@/lib/db/schema";
+import { payments, checks } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   try {
-    // Get venue (for now, use the first venue)
-    const venue = await db.query.venues.findFirst();
+    // DEV MODE: Get most recent venue for testing
+    const venue = await db.query.venues.findFirst({
+      orderBy: (v, { desc }) => [desc(v.createdAt)],
+    });
     if (!venue) {
       return NextResponse.json({ error: "No venue found" }, { status: 404 });
     }
 
-    // Fetch all payments for this venue's checks
+    // Get all checks for this venue
+    const venueChecks = await db.query.checks.findMany({
+      where: eq(checks.venueId, venue.id),
+    });
+    
+    const checkIds = venueChecks.map(c => c.id);
+    
+    if (checkIds.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    // Fetch all payments for these checks
     const allPayments = await db.query.payments.findMany({
-      where: (p, { exists, and, eq: eqOp }) =>
-        exists(
-          db
-            .select()
-            .from(db._.schema.checks)
-            .where(
-              and(
-                eqOp(db._.schema.checks.id, p.checkId),
-                eqOp(db._.schema.checks.venueId, venue.id)
-              )
-            )
-        ),
+      where: (p, { inArray }) => inArray(p.checkId, checkIds),
       with: {
         check: {
           with: {

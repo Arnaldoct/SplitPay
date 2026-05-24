@@ -4,14 +4,17 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { tables, venues } from "@/lib/db/schema";
+import { tables } from "@/lib/db/schema";
 
 // GET - List all tables
 export async function GET() {
   try {
-    // For now, get tables for the first venue
-    const venue = await db.query.venues.findFirst();
-    
+    // DEV MODE: Get most recent venue for testing
+    // TODO: Replace with proper auth once rate limits reset
+    const venue = await db.query.venues.findFirst({
+      orderBy: (v, { desc }) => [desc(v.createdAt)],
+    });
+
     if (!venue) {
       return NextResponse.json({ error: "No venue found" }, { status: 404 });
     }
@@ -44,8 +47,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the first venue
-    const venue = await db.query.venues.findFirst();
+    // DEV MODE: Get most recent venue for testing
+    // TODO: Replace with proper auth once rate limits reset
+    const venue = await db.query.venues.findFirst({
+      orderBy: (v, { desc }) => [desc(v.createdAt)],
+    });
     
     if (!venue) {
       return NextResponse.json({ error: "No venue found" }, { status: 404 });

@@ -11,7 +11,9 @@
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",
     "db:studio": "dotenv -e .env.local -- drizzle-kit studio",
-    "db:seed": "dotenv -e .env.local -- tsx scripts/seed.ts"
+    "db:seed": "dotenv -e .env.local -- tsx scripts/seed.ts",
+    "onboard": "dotenv -e .env.local -- tsx scripts/onboard.ts",
+    "onboard:simple": "dotenv -e .env.local -- tsx scripts/onboard-simple.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

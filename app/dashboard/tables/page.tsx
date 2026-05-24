@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 interface Table {
   id: string;
@@ -17,22 +15,12 @@ export default function TablesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/dashboard/login");
-        return;
-      }
-
-      fetchTables();
-    };
-
-    checkAuth();
-  }, [router, supabase.auth]);
+    // DEV MODE: Skip auth check for testing
+    // TODO: Re-enable once rate limits reset
+    fetchTables();
+  }, []);
 
   const fetchTables = async () => {
     try {

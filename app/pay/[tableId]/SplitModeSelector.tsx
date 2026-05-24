@@ -32,10 +32,16 @@ export function SplitModeSelector({
 
   const total = totalCents / 100;
   const tipSuggestions = [15, 18, 20, 22, 0]; // 0 = No tip
-  const remainingTotal = items.reduce(
+  
+  // Calculate remaining items (for split by item validation)
+  const remainingItemsTotal = items.reduce(
     (sum, item) => sum + (item.totalCents - item.claimedCents),
     0
   ) / 100;
+  
+  // For "Pay Full", use the full check total
+  // For split methods, use remaining items total
+  const maxAmount = selectedMode === "full" ? total : remainingItemsTotal;
 
   // Calculate amount based on split mode
   const calculateAmount = (): number => {
@@ -59,7 +65,7 @@ export function SplitModeSelector({
   };
 
   const amount = calculateAmount();
-  const isValid = amount > 0 && amount <= remainingTotal;
+  const isValid = amount > 0 && amount <= maxAmount;
 
   // Calculate tip
   const calculateTip = (): number => {
@@ -131,8 +137,16 @@ export function SplitModeSelector({
 
       {/* Mode-specific UI */}
       {selectedMode === "full" && (
-        <div className="text-center py-4">
-          <p className="text-gray-600">Pay the full check amount</p>
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <p className="text-center text-gray-700 mb-2">
+            You'll pay the full check amount
+          </p>
+          <p className="text-center text-2xl font-bold text-purple-600">
+            ${total.toFixed(2)}
+          </p>
+          <p className="text-center text-sm text-gray-500 mt-1">
+            (before tip)
+          </p>
         </div>
       )}
 
@@ -230,7 +244,7 @@ export function SplitModeSelector({
               type="number"
               step="0.01"
               min="0.01"
-              max={remainingTotal}
+              max={maxAmount}
               value={customAmount}
               onChange={(e) => setCustomAmount(e.target.value)}
               placeholder="0.00"
@@ -238,7 +252,7 @@ export function SplitModeSelector({
             />
           </div>
           <p className="text-sm text-gray-600">
-            Remaining on check: ${remainingTotal.toFixed(2)}
+            Maximum amount: ${maxAmount.toFixed(2)}
           </p>
         </div>
       )}
@@ -286,20 +300,23 @@ export function SplitModeSelector({
           </div>
 
           {/* Custom Tip */}
-          <div>
+          <div className="space-y-2">
             <button
               type="button"
-              onClick={() => setSelectedTipPercent(null)}
-              className={`text-sm font-medium ${
+              onClick={() => {
+                setSelectedTipPercent(null);
+                setCustomTip("");
+              }}
+              className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
                 selectedTipPercent === null
-                  ? "text-purple-600"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-purple-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              Custom tip
+              {selectedTipPercent === null ? "✓ Custom Tip" : "Custom Tip"}
             </button>
             {selectedTipPercent === null && (
-              <div className="mt-2 relative">
+              <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
                   $
                 </span>
@@ -310,6 +327,7 @@ export function SplitModeSelector({
                   value={customTip}
                   onChange={(e) => setCustomTip(e.target.value)}
                   placeholder="0.00"
+                  autoFocus
                   className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -329,14 +347,34 @@ export function SplitModeSelector({
       {/* Pay Button */}
       <div className="pt-4">
         {isValid ? (
-          <PayButton 
-            checkId={checkId} 
-            amount={amount}
-            tipAmount={tipAmount}
-            splitMethod={selectedMode}
-            selectedItems={selectedMode === "by_item" ? Array.from(selectedItems) : undefined}
-            guestEmail={guestEmail}
-          />
+          <>
+            {/* Total Summary */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-2">
+              <div className="flex justify-between text-gray-700">
+                <span>Your portion</span>
+                <span className="font-medium">${amount.toFixed(2)}</span>
+              </div>
+              {tipAmount > 0 && (
+                <div className="flex justify-between text-gray-700">
+                  <span>Tip</span>
+                  <span className="font-medium">${tipAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-300">
+                <span>Total to pay</span>
+                <span>${totalWithTip.toFixed(2)}</span>
+              </div>
+            </div>
+            
+            <PayButton 
+              checkId={checkId} 
+              amount={amount}
+              tipAmount={tipAmount}
+              splitMethod={selectedMode}
+              selectedItems={selectedMode === "by_item" ? Array.from(selectedItems) : undefined}
+              guestEmail={guestEmail}
+            />
+          </>
         ) : (
           <button
             disabled
