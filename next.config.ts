@@ -1,10 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  eslint: {
-    // Ignore ESLint errors during builds (we'll fix them later)
-    ignoreDuringBuilds: true,
-  },
+  // Next.js 16+ doesn't run ESLint during builds
   typescript: {
     // Keep TypeScript strict checking
     ignoreBuildErrors: false,
