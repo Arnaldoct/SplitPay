@@ -92,7 +92,7 @@ export default function LoginPage() {
           )}
 
           <p className="mt-6 text-sm text-gray-600 text-center">
-            We'll send you a magic link to sign in. No password needed!
+            We&apos;ll send you a magic link to sign in. No password needed!
           </p>
         </div>
 

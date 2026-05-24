@@ -10,8 +10,6 @@ import { ManualAdapter } from "./manual-adapter";
 import { SquareAdapter } from "./square-adapter";
 import { ToastAdapter } from "./toast-adapter";
 import { db } from "../db";
-import { integrations } from "../db/schema";
-import { eq } from "drizzle-orm";
 
 export async function createPOSAdapter(venueId: string): Promise<POSAdapter> {
   // Fetch the active integration for this venue

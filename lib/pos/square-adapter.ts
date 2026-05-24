@@ -11,11 +11,11 @@ import { POSAdapter, POSCheck, POSAdapterConfig } from "./adapter";
 export class SquareAdapter implements POSAdapter {
   readonly name = "square";
 
-  constructor(config: POSAdapterConfig) {
+  constructor(_config: POSAdapterConfig) {
     throw new Error("Square integration not yet implemented. Use manual mode.");
   }
 
-  async getCheck(externalId: string): Promise<POSCheck | null> {
+  async getCheck(_externalId: string): Promise<POSCheck | null> {
     throw new Error("Square integration not implemented");
   }
 
@@ -24,9 +24,9 @@ export class SquareAdapter implements POSAdapter {
   }
 
   async recordPayment(
-    checkExternalId: string,
-    amountCents: number,
-    paymentId: string
+    _checkExternalId: string,
+    _amountCents: number,
+    _paymentId: string
   ): Promise<void> {
     throw new Error("Square integration not implemented");
   }

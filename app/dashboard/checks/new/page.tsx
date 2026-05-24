@@ -209,7 +209,7 @@ export default function NewCheckPage() {
             </div>
 
             <div className="space-y-3">
-              {items.map((item, index) => (
+              {items.map((item, _index) => (
                 <div key={item.id} className="flex gap-3 items-start">
                   <div className="flex-1">
                     <input

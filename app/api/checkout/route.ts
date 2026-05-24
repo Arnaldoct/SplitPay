@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
         amountCents: finalAmountCents,
         tipCents: finalTipCents,
         totalCents: finalAmountCents + finalTipCents,
-        splitMethod: splitMethod as any,
+        splitMethod: splitMethod as "full" | "even" | "by_item" | "custom",
         status: "pending",
         guestSessionId,
         guestEmail: guestEmail || null,

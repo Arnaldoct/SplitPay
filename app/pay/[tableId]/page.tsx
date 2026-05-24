@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { checks, checkItems, venues, tables } from "@/lib/db/schema";
+import { checks } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { SplitModeSelector } from "./SplitModeSelector";

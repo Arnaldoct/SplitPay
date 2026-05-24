@@ -16,12 +16,6 @@ export default function TablesPage() {
   const [newTableNumber, setNewTableNumber] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    // DEV MODE: Skip auth check for testing
-    // TODO: Re-enable once rate limits reset
-    fetchTables();
-  }, []);
-
   const fetchTables = async () => {
     try {
       const response = await fetch("/api/dashboard/tables");
@@ -35,6 +29,12 @@ export default function TablesPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    // DEV MODE: Skip auth check for testing
+    // TODO: Re-enable once rate limits reset
+    fetchTables();
+  }, []);
 
   const handleAddTable = async (e: React.FormEvent) => {
     e.preventDefault();

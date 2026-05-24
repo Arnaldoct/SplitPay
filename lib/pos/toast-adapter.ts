@@ -11,11 +11,11 @@ import { POSAdapter, POSCheck, POSAdapterConfig } from "./adapter";
 export class ToastAdapter implements POSAdapter {
   readonly name = "toast";
 
-  constructor(config: POSAdapterConfig) {
+  constructor(_config: POSAdapterConfig) {
     throw new Error("Toast integration not yet implemented. Use manual mode.");
   }
 
-  async getCheck(externalId: string): Promise<POSCheck | null> {
+  async getCheck(_externalId: string): Promise<POSCheck | null> {
     throw new Error("Toast integration not implemented");
   }
 
@@ -24,9 +24,9 @@ export class ToastAdapter implements POSAdapter {
   }
 
   async recordPayment(
-    checkExternalId: string,
-    amountCents: number,
-    paymentId: string
+    _checkExternalId: string,
+    _amountCents: number,
+    _paymentId: string
   ): Promise<void> {
     throw new Error("Toast integration not implemented");
   }

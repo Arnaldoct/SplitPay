@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { checks, checkItems, venues } from "@/lib/db/schema";
+import { checks, checkItems } from "@/lib/db/schema";
 
 export async function POST(request: NextRequest) {
   try {
