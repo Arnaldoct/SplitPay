@@ -15,7 +15,9 @@ async function checkPayments() {
   const allChecks = await db.select().from(checks);
   console.log("\n📋 All Checks:");
   for (const c of allChecks) {
-    console.log(`   - Check #${c.checkNumber} - ${c.status} - Table: ${c.tableId.slice(0,8)}... - Venue: ${c.venueId.slice(0,8)}...`);
+    const tableId = c.tableId ? c.tableId.slice(0, 8) : 'none';
+    const venueId = c.venueId.slice(0, 8);
+    console.log(`   - Check #${c.checkNumber} - ${c.status} - Table: ${tableId}... - Venue: ${venueId}...`);
   }
   
   const allVenues = await db.select().from(venues);
