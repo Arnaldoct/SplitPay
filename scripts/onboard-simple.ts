@@ -92,8 +92,9 @@ async function onboardRestaurant() {
 
     process.exit(0);
   } catch (error: unknown) {
-    console.error("\n❌ Error:", (error as Error).message);
-    if (error.code === "23505") {
+    const err = error as Error & { code?: string };
+    console.error("\n❌ Error:", err.message);
+    if (err.code === "23505") {
       console.error("   → Slug already exists. Try a different slug.\n");
     }
     process.exit(1);
