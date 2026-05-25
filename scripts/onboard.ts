@@ -117,7 +117,7 @@ async function onboardRestaurant() {
     process.exit(0);
   } catch (error) {
     console.error("\n❌ Error creating restaurant:", error);
-    if (error.code === "23505") {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "23505") {
       console.error("   → Slug already exists. Try a different slug.");
     }
     process.exit(1);
