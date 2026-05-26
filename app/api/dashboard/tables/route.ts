@@ -1,19 +1,36 @@
 /**
  * API Route: List/Create Tables
+ * Scoped to the logged-in user's venue
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tables } from "@/lib/db/schema";
+import { createServerClient } from "@/lib/supabase/server";
 
-// GET - List all tables
+// Helper — get the venue belonging to the current user
+async function getUserVenue() {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { user: null, venue: null };
+
+  const venueUser = await db.query.venueUsers.findFirst({
+    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
+    with: { venue: true },
+  });
+
+  return { user, venue: venueUser?.venue ?? null };
+}
+
+// GET - List all tables for the logged-in user's venue
 export async function GET() {
   try {
-    // DEV MODE: Get most recent venue for testing
-    // TODO: Replace with proper auth once rate limits reset
-    const venue = await db.query.venues.findFirst({
-      orderBy: (v, { desc }) => [desc(v.createdAt)],
-    });
+    const { user, venue } = await getUserVenue();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     if (!venue) {
       return NextResponse.json({ error: "No venue found" }, { status: 404 });
@@ -27,34 +44,28 @@ export async function GET() {
     return NextResponse.json(allTables);
   } catch (error) {
     console.error("Error fetching tables:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch tables" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch tables" }, { status: 500 });
   }
 }
 
-// POST - Create new table
+// POST - Create new table for the logged-in user's venue
 export async function POST(request: NextRequest) {
   try {
+    const { user, venue } = await getUserVenue();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!venue) {
+      return NextResponse.json({ error: "No venue found. Please set up your venue first." }, { status: 404 });
+    }
+
     const body = await request.json();
     const { tableNumber } = body;
 
     if (!tableNumber) {
-      return NextResponse.json(
-        { error: "Missing tableNumber" },
-        { status: 400 }
-      );
-    }
-
-    // DEV MODE: Get most recent venue for testing
-    // TODO: Replace with proper auth once rate limits reset
-    const venue = await db.query.venues.findFirst({
-      orderBy: (v, { desc }) => [desc(v.createdAt)],
-    });
-    
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
+      return NextResponse.json({ error: "Missing tableNumber" }, { status: 400 });
     }
 
     const [newTable] = await db
@@ -69,9 +80,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(newTable);
   } catch (error) {
     console.error("Error creating table:", error);
-    return NextResponse.json(
-      { error: "Failed to create table" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create table" }, { status: 500 });
   }
 }

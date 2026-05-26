@@ -19,6 +19,75 @@ interface Venue {
   active: boolean;
 }
 
+function SetupVenueForm({ onCreated }: { onCreated: (venue: Venue) => void }) {
+  const [name, setName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/dashboard/venue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to create venue");
+      }
+
+      const venue = await response.json();
+      onCreated(venue);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8">
+        <h1 className="text-3xl font-serif font-bold text-gray-900 mb-2">Welcome to SplitPay!</h1>
+        <p className="text-gray-600 mb-8">Let&apos;s set up your restaurant to get started.</p>
+
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Restaurant Name *
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. The Golden Fork"
+              required
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 text-red-800 rounded-lg text-sm">{error}</div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isCreating}
+            className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold py-3 rounded-lg transition-colors"
+          >
+            {isCreating ? "Setting up..." : "Create My Restaurant →"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function VenuePage() {
   const [venue, setVenue] = useState<Venue | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,11 +148,7 @@ export default function VenuePage() {
   }
 
   if (!venue) {
-    return (
-      <div className="p-8">
-        <p>No venue found. Please contact support.</p>
-      </div>
-    );
+    return <SetupVenueForm onCreated={(v) => { setVenue(v); setIsLoading(false); }} />;
   }
 
   return (
