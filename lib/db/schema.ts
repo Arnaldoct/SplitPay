@@ -65,19 +65,27 @@ export const venues = pgTable("venues", {
   // Stripe Connect account ID for this venue
   stripeAccountId: varchar("stripe_account_id", { length: 255 }),
   stripeOnboardingComplete: boolean("stripe_onboarding_complete").default(false).notNull(),
-  
+
+  // Payment model — drives which payment adapter is used
+  // 'aggregator'    : SplitPay collects funds, pays restaurant manually (Honduras, Guatemala, etc.)
+  // 'stripe_connect': Restaurant has own Stripe account, gets paid directly (US, Mexico, etc.)
+  paymentModel: varchar("payment_model", { length: 50 }).default("aggregator").notNull(),
+
+  // ISO 3166-1 alpha-2 country code (HN, GT, US, MX, etc.)
+  country: varchar("country", { length: 2 }).default("US").notNull(),
+
   // Contact & location
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
   address: text("address"),
   city: varchar("city", { length: 100 }),
-  state: varchar("state", { length: 2 }),
+  state: varchar("state", { length: 100 }),
   zip: varchar("zip", { length: 10 }),
   timezone: varchar("timezone", { length: 50 }).default("America/New_York").notNull(),
-  
+
   // Business settings
   tipSuggestions: jsonb("tip_suggestions").$type<number[]>().default([15, 18, 20, 22]).notNull(),
-  
+
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -261,6 +269,38 @@ export const refunds = pgTable("refunds", {
 }));
 
 // ============================================================================
+// PAYOUTS (Aggregator model — tracks manual payouts to venues)
+// ============================================================================
+
+export const payouts = pgTable("payouts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  venueId: uuid("venue_id").references(() => venues.id).notNull(),
+
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+
+  // pending → processing → completed | failed
+  status: varchar("status", { length: 50 }).default("pending").notNull(),
+
+  // How the payout was sent (wise, bank_transfer, cash, etc.)
+  transferMethod: varchar("transfer_method", { length: 50 }),
+  transferReference: varchar("transfer_reference", { length: 255 }),
+
+  // The period this payout covers
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+
+  notes: text("notes"),
+
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  venueIdIdx: index("payouts_venue_id_idx").on(table.venueId),
+  statusIdx: index("payouts_status_idx").on(table.status),
+}));
+
+// ============================================================================
 // INTEGRATIONS (POS system configs per venue)
 // ============================================================================
 
@@ -290,6 +330,14 @@ export const venuesRelations = relations(venues, ({ many }) => ({
   tables: many(tables),
   checks: many(checks),
   integrations: many(integrations),
+  payouts: many(payouts),
+}));
+
+export const payoutsRelations = relations(payouts, ({ one }) => ({
+  venue: one(venues, {
+    fields: [payouts.venueId],
+    references: [venues.id],
+  }),
 }));
 
 export const venueUsersRelations = relations(venueUsers, ({ one }) => ({

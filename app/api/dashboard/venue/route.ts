@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { venues, venueUsers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createServerClient } from "@/lib/supabase/server";
+import { getDefaultPaymentModel } from "@/lib/payments/factory";
 
 // Helper — get the venue belonging to the current user
 async function getUserVenue() {
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, country = "US" } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Venue name is required" }, { status: 400 });
@@ -65,11 +66,16 @@ export async function POST(request: NextRequest) {
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const slug = `${base}-${Date.now()}`;
 
+    // Auto-set payment model based on country
+    const paymentModel = getDefaultPaymentModel(country);
+
     // Create the venue
     const [venue] = await db.insert(venues).values({
       name: name.trim(),
       slug,
       email: user.email,
+      country: country.toUpperCase(),
+      paymentModel,
     }).returning();
 
     // Link the user to the venue as owner
@@ -101,7 +107,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, phone, address, city, state, zip, timezone, tipSuggestions } = body;
+    const { name, email, phone, address, city, state, zip, timezone, tipSuggestions, country } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -109,7 +115,11 @@ export async function PUT(request: NextRequest) {
 
     const [updated] = await db
       .update(venues)
-      .set({ name, email, phone, address, city, state, zip, timezone, tipSuggestions, updatedAt: new Date() })
+      .set({
+        name, email, phone, address, city, state, zip, timezone, tipSuggestions,
+        ...(country ? { country: country.toUpperCase(), paymentModel: getDefaultPaymentModel(country) } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(venues.id, venue.id))
       .returning();
 

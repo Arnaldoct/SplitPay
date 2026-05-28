@@ -19,10 +19,27 @@ interface Venue {
   active: boolean;
 }
 
+const COUNTRIES = [
+  { code: "US", name: "United States", model: "stripe_connect" },
+  { code: "MX", name: "Mexico", model: "stripe_connect" },
+  { code: "CA", name: "Canada", model: "stripe_connect" },
+  { code: "HN", name: "Honduras", model: "aggregator" },
+  { code: "GT", name: "Guatemala", model: "aggregator" },
+  { code: "SV", name: "El Salvador", model: "aggregator" },
+  { code: "CR", name: "Costa Rica", model: "aggregator" },
+  { code: "PA", name: "Panama", model: "aggregator" },
+  { code: "CO", name: "Colombia", model: "aggregator" },
+  { code: "BR", name: "Brazil", model: "stripe_connect" },
+  { code: "OTHER", name: "Other", model: "aggregator" },
+];
+
 function SetupVenueForm({ onCreated }: { onCreated: (venue: Venue) => void }) {
   const [name, setName] = useState("");
+  const [country, setCountry] = useState("HN");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedCountry = COUNTRIES.find((c) => c.code === country);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +50,7 @@ function SetupVenueForm({ onCreated }: { onCreated: (venue: Venue) => void }) {
       const response = await fetch("/api/dashboard/venue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, country }),
       });
 
       if (!response.ok) {
@@ -70,6 +87,34 @@ function SetupVenueForm({ onCreated }: { onCreated: (venue: Venue) => void }) {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Country *
+            </label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              required
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedCountry && (
+            <div className={`p-3 rounded-lg text-sm ${
+              selectedCountry.model === "stripe_connect"
+                ? "bg-green-50 text-green-800"
+                : "bg-blue-50 text-blue-800"
+            }`}>
+              {selectedCountry.model === "stripe_connect"
+                ? "✅ Stripe Connect available — your restaurant will receive payments directly."
+                : "ℹ️ SplitPay collects payments on your behalf and transfers them to you."}
+            </div>
+          )}
 
           {error && (
             <div className="p-3 bg-red-50 text-red-800 rounded-lg text-sm">{error}</div>

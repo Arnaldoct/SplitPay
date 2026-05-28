@@ -1,15 +1,18 @@
 /**
- * API Route: Create Stripe Checkout Session
- * Creates a hosted Checkout session for the guest to pay their check
- * Handles all split methods: full, even, by_item, custom
+ * API Route: Create Checkout Session
+ *
+ * Creates a payment session for the guest using the correct adapter
+ * based on the venue's paymentModel:
+ *   - 'aggregator'    → SplitPay's Stripe account (Honduras, Guatemala, etc.)
+ *   - 'stripe_connect'→ Restaurant's connected Stripe account (US, Mexico, etc.)
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
 import { db } from "@/lib/db";
 import { checks, payments, claims, checkItems } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { createPaymentAdapter } from "@/lib/payments/factory";
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,10 +26,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Default tip to 0 if not provided
     const finalTipCents = tipCents || 0;
 
-    // Fetch the check
+    // Fetch the check (include venue for payment model)
     const check = await db.query.checks.findFirst({
       where: eq(checks.id, checkId),
       with: {
@@ -46,20 +48,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate amount based on split method
+    // Resolve final amount based on split method
     let finalAmountCents: number;
-    
+
     if (splitMethod === "full") {
       finalAmountCents = check.totalCents - check.paidCents;
     } else if (splitMethod === "by_item") {
       if (!selectedItems || selectedItems.length === 0) {
-        return NextResponse.json(
-          { error: "No items selected" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "No items selected" }, { status: 400 });
       }
-      
-      // Calculate total from selected items (minus what's already claimed)
       const items = check.checkItems.filter((item) =>
         selectedItems.includes(item.id)
       );
@@ -68,15 +65,11 @@ export async function POST(request: NextRequest) {
         0
       );
     } else {
-      // even or custom - use provided amount
       finalAmountCents = amountCents;
     }
 
     if (finalAmountCents <= 0) {
-      return NextResponse.json(
-        { error: "Invalid amount" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
     const remainingAmount = check.totalCents - check.paidCents;
@@ -87,30 +80,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate guest session ID for tracking
     const guestSessionId = uuidv4();
 
-    // For split-by-item, create claims to lock the items
+    // Lock items for split-by-item
     if (splitMethod === "by_item" && selectedItems) {
       for (const itemId of selectedItems) {
         const item = check.checkItems.find((i) => i.id === itemId);
         if (item) {
           const claimAmount = item.totalCents - item.claimedCents;
-          
           if (claimAmount > 0) {
-            // Create claim
             await db.insert(claims).values({
               checkItemId: itemId,
               guestSessionId,
               amountCents: claimAmount,
             });
-
-            // Update item claimed amount
             await db
               .update(checkItems)
-              .set({
-                claimedCents: sql`${checkItems.claimedCents} + ${claimAmount}`,
-              })
+              .set({ claimedCents: sql`${checkItems.claimedCents} + ${claimAmount}` })
               .where(eq(checkItems.id, itemId));
           }
         }
@@ -132,59 +118,37 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    // Create Stripe Checkout session
-    const lineItems = [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `${check.venue.name} - Check #${check.checkNumber}`,
-            description: `${splitMethod === "full" ? "Full payment" : splitMethod === "even" ? "Split evenly" : splitMethod === "by_item" ? "Split by item" : "Partial payment"}`,
-          },
-          unit_amount: finalAmountCents,
-        },
-        quantity: 1,
-      },
-    ];
+    // Build redirect URLs
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const successUrl = `${appUrl}/pay/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${appUrl}/pay/${check.tableId}`;
 
-    // Add tip as a separate line item if there is one
-    if (finalTipCents > 0) {
-      lineItems.push({
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "Tip",
-            description: "Gratuity for service",
-          },
-          unit_amount: finalTipCents,
-        },
-        quantity: 1,
-      });
-    }
+    // Pick the right payment adapter for this venue
+    const adapter = createPaymentAdapter(check.venue);
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/pay/${check.tableId}`,
-      metadata: {
-        paymentId: payment.id,
-        checkId: check.id,
-        splitMethod,
-      },
+    const result = await adapter.createCheckout({
+      paymentId: payment.id,
+      checkId: check.id,
+      tableId: check.tableId,
+      venueName: check.venue.name,
+      checkNumber: check.checkNumber,
+      amountCents: finalAmountCents,
+      tipCents: finalTipCents,
+      splitMethod,
+      guestSessionId,
+      successUrl,
+      cancelUrl,
     });
 
-    // Update payment with Stripe session ID
-    await db
-      .update(payments)
-      .set({
-        stripeCheckoutSessionId: session.id,
-      })
-      .where(eq(payments.id, payment.id));
+    // Persist the session ID
+    if (result.sessionId) {
+      await db
+        .update(payments)
+        .set({ stripeCheckoutSessionId: result.sessionId })
+        .where(eq(payments.id, payment.id));
+    }
 
-    // Return the checkout URL as JSON
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: result.url, provider: result.provider });
   } catch (error) {
     console.error("Checkout error:", error);
     return NextResponse.json(
