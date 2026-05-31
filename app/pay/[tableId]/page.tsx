@@ -31,7 +31,11 @@ function CheckSkeleton() {
   );
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function CheckContent({ tableId }: { tableId: string }) {
+
+  if (!UUID_RE.test(tableId)) notFound();
 
   // Fetch the open check for this table
   const check = await db.query.checks.findFirst({

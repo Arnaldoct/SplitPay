@@ -19,11 +19,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { checkId, splitMethod, amountCents, tipCents, selectedItems, guestEmail } = body;
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     if (!checkId || !splitMethod) {
       return NextResponse.json(
         { error: "Missing checkId or splitMethod" },
         { status: 400 }
       );
+    }
+
+    if (!UUID_RE.test(checkId)) {
+      return NextResponse.json({ error: "Check not found" }, { status: 404 });
     }
 
     const finalTipCents = tipCents || 0;
