@@ -1,5 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { db } from "@/lib/db";
+import { venueUsers } from "@/lib/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -29,9 +32,22 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error) {
+    if (!error && data.user) {
+      // Link Supabase user ID to the venueUsers record on first login.
+      // The onboard script creates the record with supabaseUserId=null —
+      // this fills it in so getUserVenue() can find the venue by user ID.
+      await db
+        .update(venueUsers)
+        .set({ supabaseUserId: data.user.id })
+        .where(
+          and(
+            eq(venueUsers.email, data.user.email!.toLowerCase()),
+            isNull(venueUsers.supabaseUserId)
+          )
+        );
+
       return redirectResponse;
     }
   }
