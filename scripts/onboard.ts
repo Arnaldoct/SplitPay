@@ -13,34 +13,64 @@
 
 import { db } from "../lib/db/index.js";
 import { venues, venueUsers, integrations } from "../lib/db/schema.js";
+import { getDefaultPaymentModel } from "../lib/payments/factory.js";
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 
 const rl = readline.createInterface({ input, output });
 
+const COUNTRY_OPTIONS: Record<string, { name: string; timezone: string }> = {
+  HN: { name: "Honduras",    timezone: "America/Tegucigalpa" },
+  GT: { name: "Guatemala",   timezone: "America/Guatemala"   },
+  SV: { name: "El Salvador", timezone: "America/El_Salvador" },
+  CR: { name: "Costa Rica",  timezone: "America/Costa_Rica"  },
+  PA: { name: "Panama",      timezone: "America/Panama"      },
+  MX: { name: "Mexico",      timezone: "America/Mexico_City" },
+  US: { name: "United States", timezone: "America/New_York"  },
+};
+
 async function onboardRestaurant() {
-  console.log("\n🎉 Welcome to SplitPay Restaurant Onboarding!\n");
-  console.log("Let's set up a new restaurant in MANUAL mode.");
+  console.log("\nWelcome to SplitPay Restaurant Onboarding!\n");
+  console.log("Sets up a new restaurant in MANUAL mode.");
   console.log("(They'll use the dashboard to enter checks manually)\n");
 
-  // Collect information
+  // Basic info
   const restaurantName = await rl.question("Restaurant name: ");
-  const slug = await rl.question("URL slug (lowercase, no spaces): ");
-  const email = await rl.question("Contact email: ");
+  const slug = await rl.question("URL slug (lowercase, no spaces, e.g. la-ceiba): ");
+  const email = await rl.question("Contact email (optional): ");
   const phone = await rl.question("Phone (optional): ");
-  const managerEmail = await rl.question("Manager email (for login): ");
+
+  // Country — drives payment model and timezone
+  console.log("\nCountry options:");
+  Object.entries(COUNTRY_OPTIONS).forEach(([code, { name }]) => {
+    console.log(`  ${code} - ${name}`);
+  });
+  const countryRaw = await rl.question("Country code (e.g. HN): ");
+  const country = countryRaw.toUpperCase().trim();
+  const countryInfo = COUNTRY_OPTIONS[country];
+  if (!countryInfo) {
+    console.error(`\nUnknown country code: ${country}. Add it to COUNTRY_OPTIONS in the script.`);
+    process.exit(1);
+  }
+
+  const paymentModel = getDefaultPaymentModel(country);
+  console.log(`\n  Payment model: ${paymentModel === "aggregator" ? "Aggregator (SplitPay collects, manual payout)" : "Stripe Connect (direct to restaurant)"}`);
+  console.log(`  Timezone:      ${countryInfo.timezone}\n`);
+
+  // Manager login credentials
+  const managerEmail = (await rl.question("Manager email (for dashboard login): ")).toLowerCase().trim();
   const managerName = await rl.question("Manager name: ");
 
-  console.log("\n📍 Location (optional, can skip):");
+  // Location (optional)
+  console.log("\nLocation (optional — press Enter to skip each):");
   const address = await rl.question("Street address: ");
   const city = await rl.question("City: ");
-  const state = await rl.question("State (2 letters): ");
-  const zip = await rl.question("ZIP code: ");
+  const state = await rl.question("State / Department: ");
+  const zip = await rl.question("ZIP / Postal code: ");
 
-  console.log("\n💡 Creating venue...");
+  console.log("\nCreating venue...");
 
   try {
-    // Create venue
     const [venue] = await db
       .insert(venues)
       .values({
@@ -52,15 +82,16 @@ async function onboardRestaurant() {
         city: city || null,
         state: state || null,
         zip: zip || null,
-        timezone: "America/New_York", // Default, can change later
+        country,
+        paymentModel,
+        timezone: countryInfo.timezone,
         tipSuggestions: [18, 20, 22, 25],
         active: true,
       })
       .returning();
 
-    console.log(`✅ Venue created: ${venue.name} (${venue.id})`);
+    console.log(`  Venue created: ${venue.name} (${venue.id})`);
 
-    // Create manager user
     const [user] = await db
       .insert(venueUsers)
       .values({
@@ -72,53 +103,50 @@ async function onboardRestaurant() {
       })
       .returning();
 
-    console.log(`✅ Manager account created: ${user.email}`);
+    console.log(`  Manager account created: ${user.email}`);
 
-    // Create integration (manual mode)
-    const [integration] = await db
-      .insert(integrations)
-      .values({
-        venueId: venue.id,
-        provider: "manual",
-        credentials: {},
-        active: true,
-      })
-      .returning();
+    await db.insert(integrations).values({
+      venueId: venue.id,
+      provider: "manual",
+      credentials: {},
+      active: true,
+    });
 
-    console.log(`✅ Integration set to MANUAL mode`);
+    console.log(`  Integration: MANUAL mode`);
 
-    // Output instructions
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
     console.log("\n" + "=".repeat(60));
-    console.log("🎉 RESTAURANT ONBOARDED SUCCESSFULLY!");
+    console.log("RESTAURANT ONBOARDED SUCCESSFULLY");
     console.log("=".repeat(60));
-    console.log("\n📋 Next Steps:\n");
-    console.log(`1. Send login link to manager:`);
-    console.log(`   ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard/login`);
-    console.log(`   Email: ${managerEmail}\n`);
-    console.log(`2. They'll receive a magic link to login\n`);
-    console.log(`3. First-time setup (5 minutes):`);
-    console.log(`   - Go to "Tables & QR Codes"`);
-    console.log(`   - Add tables (Table 1, 2, 3, etc.)`);
-    console.log(`   - Generate QR codes for each table`);
-    console.log(`   - Print and place QR codes on tables\n`);
-    console.log(`4. Daily usage:`);
-    console.log(`   - When guest orders, create check in dashboard`);
-    console.log(`   - Enter items, prices, select table`);
-    console.log(`   - Guest scans QR code → pays`);
-    console.log(`   - View transactions in dashboard\n`);
-    console.log(`📊 Venue Details:`);
-    console.log(`   Name: ${venue.name}`);
-    console.log(`   ID: ${venue.id}`);
-    console.log(`   Slug: ${venue.slug}`);
-    console.log(`   Manager: ${managerName} (${managerEmail})`);
-    console.log(`   Mode: Manual (no POS integration)\n`);
+    console.log(`
+Venue:          ${venue.name}
+Country:        ${countryInfo.name} (${country})
+Payment model:  ${paymentModel}
+Timezone:       ${countryInfo.timezone}
+Manager:        ${managerName} <${managerEmail}>
+
+Next steps:
+1. Send this login link to the manager:
+   ${appUrl}/dashboard/login
+   (They enter ${managerEmail} to receive a magic link)
+
+2. First-time setup in the dashboard:
+   - Tables & QR Codes → add tables → generate QR codes → print
+   - Place QR codes on tables
+
+3. Daily usage:
+   - Create a check for the table when guests order
+   - Guest scans QR → pays on their phone
+   - Transactions appear in the dashboard immediately
+`);
     console.log("=".repeat(60) + "\n");
 
     process.exit(0);
   } catch (error) {
-    console.error("\n❌ Error creating restaurant:", error);
+    console.error("\nError creating restaurant:", error);
     if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "23505") {
-      console.error("   → Slug already exists. Try a different slug.");
+      console.error("  Slug already taken — try a different one.");
     }
     process.exit(1);
   }
