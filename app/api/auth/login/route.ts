@@ -15,15 +15,19 @@ export async function POST(request: NextRequest) {
 
     const normalized = email.toLowerCase().trim();
 
-    const existing = await db.query.venueUsers.findFirst({
-      where: eq(venueUsers.email, normalized),
-    });
+    // Admin email always allowed through
+    const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+    if (normalized !== adminEmail) {
+      const existing = await db.query.venueUsers.findFirst({
+        where: eq(venueUsers.email, normalized),
+      });
 
-    if (!existing) {
-      return NextResponse.json(
-        { error: "This email is not registered. Contact SplitPay to get access." },
-        { status: 403 }
-      );
+      if (!existing) {
+        return NextResponse.json(
+          { error: "This email is not registered. Contact SplitPay to get access." },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json({ success: true });
