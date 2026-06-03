@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,6 +14,7 @@ export default function LoginPage() {
     setMessage(null);
 
     try {
+      // Step 1: server checks the email is pre-registered
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -20,10 +22,18 @@ export default function LoginPage() {
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send magic link");
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send magic link");
-      }
+      // Step 2: client sends the OTP so PKCE code verifier is stored in the browser
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.toLowerCase().trim(),
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      });
+
+      if (error) throw error;
 
       setMessage({ type: "success", text: "Check your email for the magic link!" });
       setEmail("");
