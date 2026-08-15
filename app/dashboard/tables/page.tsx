@@ -31,8 +31,7 @@ export default function TablesPage() {
   };
 
   useEffect(() => {
-    // DEV MODE: Skip auth check for testing
-    // TODO: Re-enable once rate limits reset
+    // Auth is enforced by middleware.ts for all /dashboard routes
     fetchTables();
   }, []);
 

@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import RefundModal, { RefundablePayment } from "./RefundModal";
+
+interface Refund {
+  id: string;
+  amountCents: number;
+  status: string;
+}
 
 interface Payment {
   id: string;
@@ -18,24 +25,44 @@ interface Payment {
       tableNumber: string;
     };
   };
+  refunds: Refund[];
+}
+
+function refundedCents(payment: Payment) {
+  return payment.refunds
+    .filter((r) => r.status !== "failed")
+    .reduce((sum, r) => sum + r.amountCents, 0);
 }
 
 export default function TransactionsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refundTarget, setRefundTarget] = useState<RefundablePayment | null>(null);
+
+  const fetchPayments = useCallback(async () => {
+    const response = await fetch("/api/dashboard/transactions");
+    if (response.ok) {
+      const data = await response.json();
+      setPayments(data);
+    }
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    // DEV MODE: Skip auth check for testing
-    const fetchPayments = async () => {
+    // Auth is enforced by middleware.ts for all /dashboard routes
+    let cancelled = false;
+    const load = async () => {
       const response = await fetch("/api/dashboard/transactions");
+      if (cancelled) return;
       if (response.ok) {
-        const data = await response.json();
-        setPayments(data);
+        setPayments(await response.json());
       }
       setIsLoading(false);
     };
-
-    fetchPayments();
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const getStatusBadge = (status: string) => {
@@ -44,6 +71,7 @@ export default function TransactionsPage() {
       pending: "bg-yellow-100 text-yellow-800",
       failed: "bg-red-100 text-red-800",
       refunded: "bg-gray-100 text-gray-800",
+      partially_refunded: "bg-orange-100 text-orange-800",
     };
 
     return (
@@ -121,6 +149,9 @@ export default function TransactionsPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -156,6 +187,29 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(payment.status)}
+                        {refundedCents(payment) > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            −${(refundedCents(payment) / 100).toFixed(2)} refunded
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        {(payment.status === "succeeded" ||
+                          payment.status === "partially_refunded") && (
+                          <button
+                            onClick={() =>
+                              setRefundTarget({
+                                id: payment.id,
+                                totalCents: payment.totalCents,
+                                refundedCents: refundedCents(payment),
+                                checkNumber: payment.check.checkNumber,
+                              })
+                            }
+                            className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
+                          >
+                            Refund
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -185,6 +239,17 @@ export default function TransactionsPage() {
           </div>
         )}
       </main>
+
+      {refundTarget && (
+        <RefundModal
+          payment={refundTarget}
+          onClose={() => setRefundTarget(null)}
+          onRefunded={() => {
+            setRefundTarget(null);
+            fetchPayments();
+          }}
+        />
+      )}
     </div>
   );
 }

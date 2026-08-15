@@ -26,6 +26,7 @@ export default function NewCheckPage() {
   const [taxRate, setTaxRate] = useState(9); // 9% default
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -85,14 +86,16 @@ export default function NewCheckPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMessage(null);
+
     if (!selectedTableId) {
-      alert("Please select a table");
+      setMessage({ type: "error", text: "Please select a table" });
       return;
     }
 
     const validItems = items.filter((item) => item.name && item.pricePerUnit > 0);
     if (validItems.length === 0) {
-      alert("Please add at least one item");
+      setMessage({ type: "error", text: "Please add at least one item" });
       return;
     }
 
@@ -120,16 +123,15 @@ export default function NewCheckPage() {
       });
 
       if (response.ok) {
-        const check = await response.json();
-        alert(`Check created successfully! ID: ${check.id}`);
-        router.push("/dashboard");
+        setMessage({ type: "success", text: "Check created successfully! Redirecting…" });
+        setTimeout(() => router.push("/dashboard"), 1000);
       } else {
         const error = await response.json();
-        alert(`Failed to create check: ${error.error}`);
+        setMessage({ type: "error", text: `Failed to create check: ${error.error}` });
       }
     } catch (error) {
       console.error("Error creating check:", error);
-      alert("Failed to create check");
+      setMessage({ type: "error", text: "Failed to create check" });
     } finally {
       setIsSaving(false);
     }
@@ -299,6 +301,19 @@ export default function NewCheckPage() {
               <span>${totals.total.toFixed(2)}</span>
             </div>
           </div>
+
+          {/* Message */}
+          {message && (
+            <div
+              className={`p-4 rounded-lg ${
+                message.type === "success"
+                  ? "bg-green-50 text-green-800"
+                  : "bg-red-50 text-red-800"
+              }`}
+            >
+              {message.text}
+            </div>
+          )}
 
           {/* Submit */}
           <div className="flex justify-end gap-3">

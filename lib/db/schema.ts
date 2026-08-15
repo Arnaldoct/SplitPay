@@ -53,6 +53,15 @@ export const refundStatusEnum = pgEnum("refund_status", [
   "failed",
 ]);
 
+export const businessTypeEnum = pgEnum("business_type", [
+  "sole_proprietor",
+  "llc",
+  "corporation",
+  "partnership",
+  "nonprofit",
+  "other",
+]);
+
 // ============================================================================
 // VENUES
 // ============================================================================
@@ -61,6 +70,11 @@ export const venues = pgTable("venues", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull().unique(),
+  
+  // Legal / Tax info (for receipts & compliance)
+  legalName: varchar("legal_name", { length: 255 }),
+  businessType: businessTypeEnum("business_type"),
+  taxId: varchar("tax_id", { length: 50 }), // EIN (US), TIN, RTN (Honduras), etc.
   
   // Stripe Connect account ID for this venue
   stripeAccountId: varchar("stripe_account_id", { length: 255 }),
@@ -82,9 +96,17 @@ export const venues = pgTable("venues", {
   state: varchar("state", { length: 100 }),
   zip: varchar("zip", { length: 10 }),
   timezone: varchar("timezone", { length: 50 }).default("America/New_York").notNull(),
+  website: varchar("website", { length: 255 }),
+
+  // Branding
+  logoUrl: text("logo_url"),
+  brandColor: varchar("brand_color", { length: 7 }), // Hex color e.g. #6B21A8
 
   // Business settings
   tipSuggestions: jsonb("tip_suggestions").$type<number[]>().default([15, 18, 20, 22]).notNull(),
+
+  // Onboarding tracking
+  onboardingComplete: boolean("onboarding_complete").default(false).notNull(),
 
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

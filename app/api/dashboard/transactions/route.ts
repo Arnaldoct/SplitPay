@@ -7,13 +7,31 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { payments, checks } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { createServerClient } from "@/lib/supabase/server";
+
+// Helper — get the venue belonging to the current user
+async function getUserVenue() {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { user: null, venue: null };
+
+  const venueUser = await db.query.venueUsers.findFirst({
+    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
+    with: { venue: true },
+  });
+
+  return { user, venue: venueUser?.venue ?? null };
+}
 
 export async function GET() {
   try {
-    // DEV MODE: Get most recent venue for testing
-    const venue = await db.query.venues.findFirst({
-      orderBy: (v, { desc }) => [desc(v.createdAt)],
-    });
+    const { user, venue } = await getUserVenue();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     if (!venue) {
       return NextResponse.json({ error: "No venue found" }, { status: 404 });
     }
@@ -38,6 +56,7 @@ export async function GET() {
             table: true,
           },
         },
+        refunds: true,
       },
       orderBy: [desc(payments.createdAt)],
     });

@@ -1,28 +1,29 @@
 import { db } from "@/lib/db";
 import { checks } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { SplitModeSelector } from "./SplitModeSelector";
 import { Suspense } from "react";
+import { GuestPayFlow } from "./GuestPayFlow";
 
 interface PageProps {
   params: Promise<{ tableId: string }>;
 }
 
-// Loading component
 function CheckSkeleton() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950">
+    <div className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <div className="h-8 bg-purple-700 rounded w-48 mx-auto mb-2 animate-pulse"></div>
-          <div className="h-4 bg-purple-700 rounded w-24 mx-auto animate-pulse"></div>
-        </div>
-        <div className="bg-white rounded-2xl shadow-2xl p-6">
-          <div className="h-6 bg-gray-200 rounded w-32 mb-4 animate-pulse"></div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 bg-gray-200 rounded-xl animate-pulse" />
+            <div className="flex-1">
+              <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-100 rounded w-20 animate-pulse" />
+            </div>
+          </div>
           <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-gray-100 rounded animate-pulse"></div>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
             ))}
           </div>
         </div>
@@ -34,14 +35,13 @@ function CheckSkeleton() {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function CheckContent({ tableId }: { tableId: string }) {
-
   if (!UUID_RE.test(tableId)) notFound();
 
-  // Fetch the open check for this table
+  // Fetch the open OR partially_paid check for this table
   const check = await db.query.checks.findFirst({
     where: and(
       eq(checks.tableId, tableId),
-      eq(checks.status, "open")
+      inArray(checks.status, ["open", "partially_paid"])
     ),
     with: {
       venue: true,
@@ -54,78 +54,27 @@ async function CheckContent({ tableId }: { tableId: string }) {
     notFound();
   }
 
-  const items = check.checkItems;
-  const subtotal = check.subtotalCents / 100;
-  const tax = check.taxCents / 100;
-  const total = check.totalCents / 100;
+  const items = check.checkItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    quantity: item.quantity,
+    totalCents: item.totalCents,
+    claimedCents: item.claimedCents,
+  }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-purple-950">
-      <div className="max-w-md mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-serif font-bold text-cream-100 mb-2">
-            {check.venue.name}
-          </h1>
-          <p className="text-purple-200">Table {check.table?.tableNumber}</p>
-          <p className="text-purple-300 text-sm mt-1">Check #{check.checkNumber}</p>
-        </div>
-
-        {/* Check Items */}
-        <div className="bg-white rounded-2xl shadow-2xl p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Check</h2>
-          
-          <div className="space-y-3 mb-6">
-            {items.map((item) => (
-              <div key={item.id} className="flex justify-between items-start">
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{item.name}</p>
-                  {item.quantity > 1 && (
-                    <p className="text-sm text-gray-500">×{item.quantity}</p>
-                  )}
-                </div>
-                <p className="font-medium text-gray-900">
-                  ${(item.totalCents / 100).toFixed(2)}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Totals */}
-          <div className="border-t border-gray-200 pt-4 space-y-2">
-            <div className="flex justify-between text-gray-600">
-              <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Tax</span>
-              <span>${tax.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-xl font-bold text-gray-900 pt-2 border-t border-gray-300">
-              <span>Total</span>
-              <span>${total.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Split Mode Selector */}
-        <SplitModeSelector
-          checkId={check.id}
-          totalCents={check.totalCents}
-          items={items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            totalCents: item.totalCents,
-            claimedCents: item.claimedCents,
-          }))}
-        />
-
-        <p className="text-center text-purple-200 text-sm mt-4">
-          Secure payment powered by Stripe
-        </p>
-      </div>
-    </div>
+    <GuestPayFlow
+      checkId={check.id}
+      venueName={check.venue.name}
+      tableNumber={check.table?.tableNumber ?? "—"}
+      checkNumber={check.checkNumber ?? "N/A"}
+      items={items}
+      subtotalCents={check.subtotalCents}
+      taxCents={check.taxCents}
+      totalCents={check.totalCents}
+      paidCents={check.paidCents}
+      openedAt={check.openedAt.toISOString()}
+    />
   );
 }
 

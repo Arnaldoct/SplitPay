@@ -1,3 +1,110 @@
+import Link from "next/link";
+
+/**
+ * SplitPay brand wordmark — sleek gradient serif.
+ * Use `size` to scale; pass `subtle` on dark surfaces for a plain-white variant.
+ */
+export function Wordmark({
+  size = "md",
+  className = "",
+}: {
+  size?: "sm" | "md" | "lg" | "xl";
+  className?: string;
+}) {
+  const sizes = {
+    sm: "text-xl",
+    md: "text-2xl",
+    lg: "text-3xl",
+    xl: "text-4xl sm:text-5xl",
+  };
+  return <span className={`wordmark ${sizes[size]} ${className}`}>SplitPay</span>;
+}
+
+/**
+ * Surface card with consistent radius, border, and soft shadow.
+ */
+export function Card({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`bg-white rounded-2xl border border-gray-200/80 shadow-sm ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+type ButtonVariant = "primary" | "secondary" | "ghost";
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  primary:
+    "bg-violet-600 hover:bg-violet-700 text-white shadow-sm shadow-violet-600/20",
+  secondary: "bg-gray-100 hover:bg-gray-200 text-gray-800",
+  ghost: "bg-transparent hover:bg-gray-100 text-gray-600 hover:text-gray-900",
+};
+
+/**
+ * Button — renders an <a>/<Link> when `href` is set, otherwise a <button>.
+ */
+export function Button({
+  children,
+  variant = "primary",
+  href,
+  className = "",
+  ...props
+}: {
+  children: React.ReactNode;
+  variant?: ButtonVariant;
+  href?: string;
+  className?: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const cls = `inline-flex items-center justify-center gap-2 font-semibold rounded-xl px-5 py-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${buttonVariants[variant]} ${className}`;
+
+  if (href) {
+    return (
+      <Link href={href} className={cls}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button className={cls} {...props}>
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Small status pill.
+ */
+export function Badge({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "success" | "warning" | "danger" | "info";
+}) {
+  const tones = {
+    neutral: "bg-gray-100 text-gray-700",
+    success: "bg-emerald-100 text-emerald-800",
+    warning: "bg-amber-100 text-amber-800",
+    danger: "bg-red-100 text-red-800",
+    info: "bg-violet-100 text-violet-800",
+  };
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 /**
  * Reusable Loading Spinner Component
  */

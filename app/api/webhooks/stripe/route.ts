@@ -9,8 +9,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { db } from "@/lib/db";
-import { payments, checks } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { payments, checks, venues, payouts } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import Stripe from "stripe";
 import { sendReceipt } from "@/lib/email";
 
@@ -150,6 +150,82 @@ export async function POST(request: NextRequest) {
 
           console.log(`❌ Payment ${paymentId} failed`);
         }
+        break;
+      }
+
+      case "account.updated": {
+        // A restaurant progressed through (or regressed in) Connect onboarding.
+        // Keep our onboarding flag in sync so the payment adapter and dashboard
+        // banners reflect the real account state.
+        const account = event.data.object as Stripe.Account;
+        const isReady = Boolean(account.charges_enabled && account.payouts_enabled);
+
+        const [venue] = await db
+          .update(venues)
+          .set({ stripeOnboardingComplete: isReady, updatedAt: new Date() })
+          .where(eq(venues.stripeAccountId, account.id))
+          .returning();
+
+        if (venue) {
+          console.log(
+            `🔗 Connect account ${account.id} updated for venue ${venue.name}: ` +
+            `charges=${account.charges_enabled} payouts=${account.payouts_enabled}`
+          );
+        }
+        break;
+      }
+
+      case "payout.paid": {
+        // Money landed in a restaurant's bank account (Connect venues).
+        // The event fires on the connected account, so event.account tells us
+        // which venue it belongs to.
+        const payout = event.data.object as Stripe.Payout;
+        const connectedAccountId = event.account;
+
+        if (!connectedAccountId) break;
+
+        const venue = await db.query.venues.findFirst({
+          where: eq(venues.stripeAccountId, connectedAccountId),
+        });
+
+        if (!venue) {
+          console.warn(`payout.paid for unknown account ${connectedAccountId}`);
+          break;
+        }
+
+        // Idempotent: Stripe may deliver the same event more than once
+        const existing = await db.query.payouts.findFirst({
+          where: and(
+            eq(payouts.venueId, venue.id),
+            eq(payouts.transferReference, payout.id)
+          ),
+        });
+
+        if (!existing) {
+          await db.insert(payouts).values({
+            venueId: venue.id,
+            amountCents: payout.amount,
+            currency: payout.currency.toUpperCase(),
+            status: "completed",
+            transferMethod: "stripe",
+            transferReference: payout.id,
+            processedAt: new Date(payout.arrival_date * 1000),
+          });
+          console.log(
+            `💰 Payout ${payout.id} ($${(payout.amount / 100).toFixed(2)}) paid to ${venue.name}`
+          );
+        }
+        break;
+      }
+
+      case "transfer.created": {
+        // Destination-charge funds moved to a connected account.
+        // Logged for reconciliation; the payment itself is tracked via
+        // checkout.session.completed.
+        const transfer = event.data.object as Stripe.Transfer;
+        console.log(
+          `↗️ Transfer ${transfer.id}: $${(transfer.amount / 100).toFixed(2)} → ${transfer.destination}`
+        );
         break;
       }
 

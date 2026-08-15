@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Wordmark } from "@/app/components/ui";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -52,14 +53,14 @@ export default function LoginPage() {
       <div className="max-w-md w-full">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-serif font-bold text-white mb-2">
-            SplitPay
-          </h1>
+          <div className="mb-2">
+            <Wordmark size="xl" />
+          </div>
           <p className="text-purple-200">Merchant Dashboard</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 animate-rise">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Sign In</h2>
 
           <form onSubmit={handleLogin} className="space-y-4">
