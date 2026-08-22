@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { payouts } from "@/lib/db/schema";
-import { createServerClient } from "@/lib/supabase/server";
+import { requirePlatformAdmin } from "@/lib/dashboard-auth";
 
 async function isAdmin() {
-  const adminEmail = process.env.ADMIN_EMAIL;
-  if (!adminEmail) return false;
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.email?.toLowerCase() === adminEmail.toLowerCase();
+  const { ok } = await requirePlatformAdmin();
+  return ok;
 }
 
 export async function POST(request: NextRequest) {

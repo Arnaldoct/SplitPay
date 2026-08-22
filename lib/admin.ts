@@ -1,21 +1,22 @@
 import { redirect } from "next/navigation";
-import { createServerClient } from "@/lib/supabase/server";
+import { requirePlatformAdmin } from "@/lib/dashboard-auth";
 
 export const COMMISSION_RATE = 0.05; // 5% on food amount, not tips
 // Floor so tiny transactions still cover Stripe's fixed fee portion
 export const COMMISSION_MIN_CENTS = 10; // $0.10 minimum per transaction
 
+/**
+ * Gate for /admin/* server components. Backed by users.is_platform_admin
+ * (replaces the old ADMIN_EMAIL env hack). Redirects unauthenticated callers to
+ * login and authenticated-but-not-admin callers to the dashboard.
+ */
 export async function requireAdmin() {
-  const adminEmail = process.env.ADMIN_EMAIL;
-  if (!adminEmail) throw new Error("ADMIN_EMAIL env var is not set");
+  const { ok, ctx } = await requirePlatformAdmin();
 
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  if (!ctx.user) redirect("/dashboard/login");
+  if (!ok) redirect("/dashboard");
 
-  if (!user) redirect("/dashboard/login");
-  if (user.email?.toLowerCase() !== adminEmail.toLowerCase()) redirect("/dashboard");
-
-  return user;
+  return ctx.user;
 }
 
 export function calcCommission(amountCents: number) {

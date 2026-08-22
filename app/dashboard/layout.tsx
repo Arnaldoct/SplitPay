@@ -6,30 +6,24 @@
  */
 
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
-import { createServerClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/dashboard-auth";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, organization, onboardingComplete } = await getAuthContext();
 
-  // If not authenticated, middleware handles redirect to login
+  // Not authenticated → middleware handles the redirect to login.
   if (!user) {
     return children;
   }
 
-  // Check if user has completed onboarding
-  const venueUser = await db.query.venueUsers.findFirst({
-    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-    with: { venue: true },
-  });
-
-  // If user has a venue that hasn't completed onboarding, redirect
-  if (venueUser?.venue && !venueUser.venue.onboardingComplete) {
+  // Only redirect when there is a resolved organization that is genuinely
+  // un-onboarded. Users with no users row / no membership (e.g. platform
+  // admins) fall through and render — the API routes 404 rather than looping.
+  if (organization && !onboardingComplete) {
     redirect("/onboard");
   }
 
