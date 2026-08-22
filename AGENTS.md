@@ -60,6 +60,11 @@ Do not deviate from this stack without explicit approval:
 - **Currency**: USD only for v1. All amounts stored as **integers in cents**.
 - **Times**: All times in UTC in the DB, formatted to venue's local timezone in the UI.
 
+## Migration discipline
+
+1. **Never use `db:push` against any real database.** All schema changes go through proper Drizzle migrations (`db:generate` → review → `db:migrate`) from now on. The original `db:push` origin is exactly what caused the schema-drift reconcile problem: the live DB was built by `db:push` from an old schema, so it silently diverged from `schema.ts` (missing the onboarding columns, carrying orphaned `latitude`/`longitude`) and drizzle's migration tracking never reflected reality.
+2. **When verifying a migration, wait for `db:migrate` to fully return to the prompt before running any verification queries.** Checking mid-run — while the spinner is still going — caused a false "it didn't apply" alarm: the migration was still in progress (or a follow-up no-op run was misread), and querying too early showed the pre-apply state.
+
 ## 8-Week Roadmap
 
 **Current stage**: Stage 4
