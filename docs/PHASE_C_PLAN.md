@@ -1,6 +1,6 @@
 # Phase C — Execution Plan: Move the app onto the multi-tenant schema
 
-**Status:** C1 complete. C2–C6 pending.
+**Status:** C1 complete. C2 complete + tested. C3–C6 pending.
 **Owner:** Arnaldo Castillo Toro
 **Created:** 2026-08-22
 
@@ -106,7 +106,7 @@ here are hand-written — discard generated files; don't rely on an empty
 
 ---
 
-### Stage C2 — Auth / tenant resolution ⚠️ highest risk
+### Stage C2 — Auth / tenant resolution ✅ DONE + TESTED
 A bug here locks everyone out or leaks tenants.
 
 **Design:** add `getAuthContext()` to `lib/dashboard-auth.ts` returning
@@ -133,6 +133,27 @@ wrong-tenant resolution. **Your admin user must be promoted in the DB first**
 un-onboarded → `/onboard`, onboarded can't re-enter; unregistered email rejected
 at login; first-login links `supabase_user_id`; resolved org/location ids match
 the backfill.
+
+**Tested (verified):** magic-link login succeeds and lands on localhost;
+platform admin reaches `/admin`; un-onboarded → `/onboard`; onboarded →
+`/dashboard` and `/onboard` bounces back (verified by temporarily flipping an
+org's `onboarding_complete`, then reverting); `supabase_user_id` dual-write to
+`users` + `venue_users` confirmed in the DB; org/location resolution matches the
+backfill. Code-verified (not run live): non-admin redirected off `/admin`
+(`requireAdmin` → `/dashboard`) and unregistered-email 403 — both low-risk,
+backed by reviewed code; the legacy `getUserVenue()` path still resolves a venue
+for a migrated user (DB-confirmed), so not-yet-migrated C3 routes keep working.
+
+**PKCE callback fix (surfaced during C2 testing):** the old client-component
+`app/auth/callback/page.tsx` ran `exchangeCodeForSession()` in a `useEffect`,
+which React Strict Mode double-fired — the first call consumed the one-time PKCE
+verifier and the second threw "PKCE code verifier not found in storage".
+Replaced with a server-side Route Handler `app/auth/callback/route.ts` (runs
+once, sets session cookies server-side) that inlines the former
+`/api/auth/link-user` behavior (the `supabase_user_id` dual-write + the
+`getAuthContext()` onboarding redirect). Transport is unchanged — still
+magic-link, per the "auth transport is out of scope" note above.
+`/api/auth/link-user` is now unused and can be deleted in a later cleanup.
 
 ---
 
