@@ -190,6 +190,32 @@ second org can't see the first's data.
 **Deploy:** ship **C2 + C3 together** as the "dashboard" release, then remove the
 dead `getUserVenue()`.
 
+**⚠️ Landmines carried over from the C2 audit (2026-08-29) — read before starting C3:**
+1. **Tenant selection changes for multi-org owners.** `getUserVenue()` uses
+   `venueUsers.findFirst(... supabaseUserId ...)` with **no `orderBy`**, so for a
+   user who owns multiple venues it resolves an **arbitrary** (and possibly
+   request-to-request unstable) venue. `getAuthContext()` resolves
+   **deterministically** (`org_admin` first, then most-recent `createdAt`).
+   Swapping the routes therefore **changes which tenant the dashboard shows** for
+   multi-org accounts (e.g. `castillotoro3@gmail.com` owns 3 orgs → legacy picks
+   arbitrarily, canonical picks `TESTING 1`). The plan's "both paths stay
+   consistent through the gap" assumption holds **only for single-venue users**.
+   → **Test C3 with a fresh single-org account** so this ambiguity can't mask
+   bugs; don't validate C3 solely on a multi-org owner.
+2. **Handle `locationAmbiguous` and null `location` explicitly.** `getAuthContext`
+   returns `location = null` when an org-wide role's org has **0 or >1** active
+   locations (`locationAmbiguous = true` in the >1 case) — and **nothing consumes
+   that flag today**. Every location-scoped route must check for null location /
+   `locationAmbiguous` and fail with a clear error instead of proceeding.
+3. **Guard `org_admin` with 0 locations before stamping `location_id`.** An
+   org-wide role whose org has no active location resolves to `location = null`;
+   inserts that stamp `location_id` (tables, checks, etc.) must guard against this
+   rather than writing null / throwing. (Backfill is 1:1 today, so unreachable in
+   current data — but guard it.)
+4. **Delete the dead `/api/auth/link-user` route** as part of C3/cleanup. Its
+   logic was inlined into the server-side `app/auth/callback/route.ts` (C2), and
+   nothing calls it anymore.
+
 ---
 
 ### Stage C4 — Guest pay + checkout + webhooks (money path)
