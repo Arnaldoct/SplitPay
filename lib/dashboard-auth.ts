@@ -168,3 +168,69 @@ export async function requirePlatformAdmin(): Promise<{ ok: boolean; ctx: AuthCo
   const ctx = await getAuthContext();
   return { ok: ctx.isPlatformAdmin, ctx };
 }
+
+// ---------------------------------------------------------------------------
+// Tenant-context guard for the dashboard/onboard API routes (Stage C3).
+//
+// Centralizes the C2-audit landmines so every migrated route handles them the
+// same way instead of re-implementing the checks per route:
+//   - no session               -> 401 Unauthorized
+//   - authenticated, no users row -> 404
+//   - no active membership (no org) -> 404
+//   - null / ambiguous location   -> 409  (only in location:"required" mode)
+//
+// `location: "required"` (the default) GUARANTEES a non-null `location` in the
+// ok result — location-scoped routes can use `ctx.location.id` directly.
+// `location: "optional"` is for org-only routes (e.g. transactions) that filter
+// by organization and must not 409 just because the location is ambiguous.
+//
+// Usage:
+//   const ctx = await requireTenantContext();
+//   if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: ctx.status });
+//   // ctx.dbUser / ctx.organization / ctx.location now available
+// ---------------------------------------------------------------------------
+
+export type TenantContextError = { ok: false; status: number; error: string };
+
+type TenantContextRequired = {
+  ok: true;
+  dbUser: DbUser;
+  organization: Organization;
+  location: Location;
+};
+
+type TenantContextOptional = {
+  ok: true;
+  dbUser: DbUser;
+  organization: Organization;
+  location: Location | null;
+};
+
+export async function requireTenantContext(
+  opts?: { location?: "required" }
+): Promise<TenantContextRequired | TenantContextError>;
+export async function requireTenantContext(
+  opts: { location: "optional" }
+): Promise<TenantContextOptional | TenantContextError>;
+export async function requireTenantContext(
+  opts: { location?: "required" | "optional" } = {}
+): Promise<TenantContextRequired | TenantContextOptional | TenantContextError> {
+  const requireLocation = (opts.location ?? "required") === "required";
+  const ctx = await getAuthContext();
+
+  if (!ctx.user) return { ok: false, status: 401, error: "Unauthorized" };
+  if (!ctx.dbUser) return { ok: false, status: 404, error: "No account found for this user" };
+  if (!ctx.organization) {
+    return { ok: false, status: 404, error: "No organization found for this user" };
+  }
+  if (requireLocation && (ctx.locationAmbiguous || !ctx.location)) {
+    return { ok: false, status: 409, error: "No single location resolved for this account" };
+  }
+
+  return {
+    ok: true,
+    dbUser: ctx.dbUser,
+    organization: ctx.organization,
+    location: ctx.location,
+  };
+}

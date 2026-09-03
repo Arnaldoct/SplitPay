@@ -7,8 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tables } from "@/lib/db/schema";
 import { createServerClient } from "@/lib/supabase/server";
+import { requireTenantContext } from "@/lib/dashboard-auth";
 
-// Helper — get the venue belonging to the current user
+// Helper — get the venue belonging to the current user.
+// LEGACY: still used by POST until C3.1 migrates the create path.
 async function getUserVenue() {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -23,21 +25,17 @@ async function getUserVenue() {
   return { user, venue: venueUser?.venue ?? null };
 }
 
-// GET - List all tables for the logged-in user's venue
+// GET - List all tables for the logged-in user's location (Stage C3: scope by
+// location_id via the canonical tenant context instead of venue_id).
 export async function GET() {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
     const allTables = await db.query.tables.findMany({
-      where: (t, { eq }) => eq(t.venueId, venue.id),
+      where: (t, { eq }) => eq(t.locationId, ctx.location.id),
       orderBy: (t, { asc }) => [asc(t.tableNumber)],
     });
 

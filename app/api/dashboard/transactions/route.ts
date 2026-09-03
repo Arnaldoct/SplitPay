@@ -1,55 +1,28 @@
 /**
  * API Route: Get Transactions
- * Fetches all payments for the dashboard
+ * Fetches all payments for the logged-in user's organization.
+ *
+ * Stage C3: scopes directly by `payments.organization_id` (added in C1) instead
+ * of the old "fetch every check for the venue, then filter payments by those
+ * check ids" two-step. Resolved via requireTenantContext (org-only; location is
+ * irrelevant here, so it never 409s on an ambiguous location).
  */
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { payments, checks } from "@/lib/db/schema";
+import { payments } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { createServerClient } from "@/lib/supabase/server";
-
-// Helper — get the venue belonging to the current user
-async function getUserVenue() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return { user: null, venue: null };
-
-  const venueUser = await db.query.venueUsers.findFirst({
-    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-    with: { venue: true },
-  });
-
-  return { user, venue: venueUser?.venue ?? null };
-}
+import { requireTenantContext } from "@/lib/dashboard-auth";
 
 export async function GET() {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await requireTenantContext({ location: "optional" });
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
-    }
-
-    // Get all checks for this venue
-    const venueChecks = await db.query.checks.findMany({
-      where: eq(checks.venueId, venue.id),
-    });
-    
-    const checkIds = venueChecks.map(c => c.id);
-    
-    if (checkIds.length === 0) {
-      return NextResponse.json([]);
-    }
-
-    // Fetch all payments for these checks
     const allPayments = await db.query.payments.findMany({
-      where: (p, { inArray }) => inArray(p.checkId, checkIds),
+      where: eq(payments.organizationId, ctx.organization.id),
       with: {
         check: {
           with: {
