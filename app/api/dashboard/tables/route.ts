@@ -6,24 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tables } from "@/lib/db/schema";
-import { createServerClient } from "@/lib/supabase/server";
 import { requireTenantContext } from "@/lib/dashboard-auth";
-
-// Helper — get the venue belonging to the current user.
-// LEGACY: still used by POST until C3.1 migrates the create path.
-async function getUserVenue() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return { user: null, venue: null };
-
-  const venueUser = await db.query.venueUsers.findFirst({
-    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-    with: { venue: true },
-  });
-
-  return { user, venue: venueUser?.venue ?? null };
-}
 
 // GET - List all tables for the logged-in user's location (Stage C3: scope by
 // location_id via the canonical tenant context instead of venue_id).
@@ -46,17 +29,14 @@ export async function GET() {
   }
 }
 
-// POST - Create new table for the logged-in user's venue
+// POST - Create a new table for the logged-in user's location (Stage C3).
+// requireTenantContext (location required) guarantees a non-null location or a
+// 409, so we never stamp a null location_id.
 export async function POST(request: NextRequest) {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found. Please set up your venue first." }, { status: 404 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
     const body = await request.json();
@@ -69,7 +49,13 @@ export async function POST(request: NextRequest) {
     const [newTable] = await db
       .insert(tables)
       .values({
-        venueId: venue.id,
+        // Canonical tenant columns.
+        locationId: ctx.location.id,
+        organizationId: ctx.organization.id,
+        // venue_id is still NOT NULL until the contract migration drops it.
+        // Backfill invariant locations.id == venues.id, so the location id is
+        // also the venue id — keeps the legacy FK satisfied and consistent.
+        venueId: ctx.location.id,
         tableNumber: tableNumber.toString(),
         active: true,
       })
