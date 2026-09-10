@@ -8,26 +8,22 @@
 
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { getUserVenue } from "@/lib/dashboard-auth";
+import { requireTenantContext } from "@/lib/dashboard-auth";
 
 export async function POST() {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
-    }
-    if (!venue.stripeAccountId || !venue.stripeOnboardingComplete) {
+    if (!ctx.location.stripeAccountId || !ctx.location.stripeOnboardingComplete) {
       return NextResponse.json(
         { error: "Stripe onboarding is not complete yet" },
         { status: 400 }
       );
     }
 
-    const loginLink = await stripe.accounts.createLoginLink(venue.stripeAccountId);
+    const loginLink = await stripe.accounts.createLoginLink(ctx.location.stripeAccountId);
 
     return NextResponse.json({ url: loginLink.url });
   } catch (error) {

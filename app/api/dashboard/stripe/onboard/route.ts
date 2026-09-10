@@ -11,42 +11,55 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { venues } from "@/lib/db/schema";
+import { venues, locations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { stripe } from "@/lib/stripe";
-import { getUserVenue } from "@/lib/dashboard-auth";
+import { requireTenantContext } from "@/lib/dashboard-auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
-    }
-    if (venue.paymentModel !== "stripe_connect") {
+    if (ctx.location.paymentModel !== "stripe_connect") {
       return NextResponse.json(
-        { error: "This venue uses manual payouts — Stripe onboarding does not apply" },
+        { error: "This location uses manual payouts — Stripe onboarding does not apply" },
         { status: 400 }
       );
     }
 
-    let stripeAccountId = venue.stripeAccountId;
+    let stripeAccountId = ctx.location.stripeAccountId;
+
+    // Defense-in-depth for the expand phase: if the location row wasn't
+    // backfilled but the legacy venue row already holds a connected account
+    // (locations.id == venues.id), reuse it rather than creating a duplicate
+    // Stripe account. Persist it onto the location so future reads are canonical.
+    if (!stripeAccountId) {
+      const legacyVenue = await db.query.venues.findFirst({
+        where: eq(venues.id, ctx.location.id),
+      });
+      if (legacyVenue?.stripeAccountId) {
+        stripeAccountId = legacyVenue.stripeAccountId;
+        await db
+          .update(locations)
+          .set({ stripeAccountId, updatedAt: new Date() })
+          .where(eq(locations.id, ctx.location.id));
+      }
+    }
 
     // First time through: create the Express account
     if (!stripeAccountId) {
       const account = await stripe.accounts.create({
         type: "express",
-        country: venue.country,
-        email: venue.email ?? user.email,
+        country: ctx.organization.country,
+        email: ctx.organization.billingEmail ?? ctx.dbUser.email,
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },
         },
         business_profile: {
-          name: venue.name,
+          name: ctx.location.name,
           mcc: "5812", // eating places / restaurants
         },
         settings: {
@@ -59,9 +72,9 @@ export async function POST(request: NextRequest) {
       stripeAccountId = account.id;
 
       await db
-        .update(venues)
+        .update(locations)
         .set({ stripeAccountId, updatedAt: new Date() })
-        .where(eq(venues.id, venue.id));
+        .where(eq(locations.id, ctx.location.id));
     }
 
     // Account Links are single-use and expire — generate a fresh one each time
@@ -85,35 +98,31 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const { user, venue } = await getUserVenue();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (!venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
-    if (!venue.stripeAccountId) {
+    if (!ctx.location.stripeAccountId) {
       return NextResponse.json({
-        paymentModel: venue.paymentModel,
+        paymentModel: ctx.location.paymentModel,
         hasAccount: false,
         onboardingComplete: false,
       });
     }
 
-    const account = await stripe.accounts.retrieve(venue.stripeAccountId);
+    const account = await stripe.accounts.retrieve(ctx.location.stripeAccountId);
     const isReady = Boolean(account.charges_enabled && account.payouts_enabled);
 
-    if (isReady !== venue.stripeOnboardingComplete) {
+    if (isReady !== ctx.location.stripeOnboardingComplete) {
       await db
-        .update(venues)
+        .update(locations)
         .set({ stripeOnboardingComplete: isReady, updatedAt: new Date() })
-        .where(eq(venues.id, venue.id));
+        .where(eq(locations.id, ctx.location.id));
     }
 
     return NextResponse.json({
-      paymentModel: venue.paymentModel,
+      paymentModel: ctx.location.paymentModel,
       hasAccount: true,
       onboardingComplete: isReady,
       chargesEnabled: account.charges_enabled,

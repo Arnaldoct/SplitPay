@@ -216,6 +216,18 @@ dead `getUserVenue()`.
    logic was inlined into the server-side `app/auth/callback/route.ts` (C2), and
    nothing calls it anymore.
 
+**⚠️ Deferred C3.3 tests — MUST run before the pilot.** C3.3's refunds guard was
+verified against real data (all foreign-org payments rejected before the Stripe
+call) and transaction + idempotency confirmed by code inspection, but two
+lower-risk branches had no data to exercise and are still unproven at runtime:
+1. **Live happy-path refund on a real C3-owned payment** — the guard's *allow*
+   branch + the DB transaction effects (refund row, payment status, check
+   rollback). Blocked today because no C3 Test Co payment exists; run once a
+   payment flows end-to-end (check → guest pay).
+2. **Connect-path refund** (`reverse_transfer: true` + `refund_application_fee:
+   true`) once a `stripe_connect` tenant has a real Stripe **test** payment. C3
+   Test Co is `aggregator`, so this path is never taken for it.
+
 ---
 
 ### Stage C4 — Guest pay + checkout + webhooks (money path)
