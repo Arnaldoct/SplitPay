@@ -1,13 +1,12 @@
 /**
  * Dashboard auth helper
  *
- * Two resolvers live here during the Phase C migration:
- *
- *  - getUserVenue()   — LEGACY. Resolves supabase user -> venue_users -> venue.
- *                       Kept UNCHANGED until Stage C3 removes it; the not-yet-
- *                       migrated dashboard/guest routes still depend on it.
  *  - getAuthContext() — CANONICAL. Resolves supabase user -> users ->
  *                       memberships -> active org/location. Read-only.
+ *
+ * The legacy getUserVenue() resolver (supabase user -> venue_users -> venue) was
+ * removed in Stage C3.4 once every dashboard/onboard route had moved onto the
+ * canonical org/location path.
  */
 
 import { db } from "@/lib/db";
@@ -15,23 +14,6 @@ import { createServerClient } from "@/lib/supabase/server";
 import { users, memberships, locations, organizations } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-
-// ---------------------------------------------------------------------------
-// LEGACY resolver — do not change until Stage C3 retires it.
-// ---------------------------------------------------------------------------
-export async function getUserVenue() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return { user: null, venueUser: null, venue: null };
-
-  const venueUser = await db.query.venueUsers.findFirst({
-    where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-    with: { venue: true },
-  });
-
-  return { user, venueUser: venueUser ?? null, venue: venueUser?.venue ?? null };
-}
 
 // ---------------------------------------------------------------------------
 // CANONICAL resolver — supabase user -> users -> memberships -> org/location.

@@ -1,6 +1,7 @@
 # Phase C — Execution Plan: Move the app onto the multi-tenant schema
 
-**Status:** C1 complete. C2 complete + tested. C3–C6 pending.
+**Status:** C1 complete. C2 complete + tested. **C3 complete (C3.0–C3.4) —
+[C2 + C3] deploy-ready.** C4–C6 pending.
 **Owner:** Arnaldo Castillo Toro
 **Created:** 2026-08-22
 
@@ -157,9 +158,35 @@ magic-link, per the "auth transport is out of scope" note above.
 
 ---
 
-### Stage C3 — Dashboard + onboard API routes
+### Stage C3 — Dashboard + onboard API routes ✅ DONE (C3.0–C3.4)
 Each: swap inline `getUserVenue` → `getAuthContext`, scope by
 `location_id` / `organization_id`, stamp both tenant columns on inserts.
+
+**Completion (C3.4, final checkpoint):** `venue/route.ts` GET/PUT/POST and
+`onboard/route.ts` GET/POST migrated off the legacy path.
+- GET returns the merged org+location flat object exposing every key the settings
+  page reads/round-trips (verified live — settings round-trip drops nothing;
+  DB-confirmed `org.name == location.name`, contact/address on the location, org
+  legal/tax fields untouched).
+- PUT routes each field per Decision #3, `name` synced to both org+location in one
+  transaction.
+- POST create-path is **Option A** (canonical + legacy dual-write): one txn builds
+  `organization → venue(legacy) → location (id pinned to venue.id) → users
+  row/link → membership(org_admin) → venue_user(legacy) → integration(manual)`, so
+  the NOT-NULL `venue_id` FKs on tables/checks/integrations stay satisfiable during
+  the expand phase.
+- `onboard` POST splits the wizard payload (org: legal/tax/country/name +
+  `onboarding_complete`; location: address/contact/branding + derived
+  `paymentModel`); `onboarding_complete` is set on the **org only** (the sole place
+  the column exists — `locations` has no such column).
+- **Cleanup:** exported `getUserVenue` removed from `lib/dashboard-auth.ts`; dead
+  `app/api/auth/link-user/route.ts` deleted. Post-C3.4 greps confirm no
+  `getUserVenue` code and no `venue_users`-based tenant *resolution* remains in the
+  dashboard/onboard routes (the remaining `venue_users`/`venues` **writes** — the
+  create-path dual-write and the callback link — are deliberate expand-phase
+  FK/read-path support, tagged for removal in C6/contract).
+
+**[C2 + C3] is now deploy-ready.**
 
 **Files:**
 - `app/api/dashboard/venue/route.ts` — GET returns org+location; PUT writes each
@@ -227,6 +254,12 @@ lower-risk branches had no data to exercise and are still unproven at runtime:
 2. **Connect-path refund** (`reverse_transfer: true` + `refund_application_fee:
    true`) once a `stripe_connect` tenant has a real Stripe **test** payment. C3
    Test Co is `aggregator`, so this path is never taken for it.
+3. **C3.4 create-path smoke test** — the `venue/route.ts` POST (Option A) is not
+   exercised by the single-org seed account (it already has a venue, so GET
+   succeeds and POST never fires). Run once with a genuinely new signup: confirm
+   all 7 rows land (organization, venue, location with `id == venue.id`, users
+   row + link, membership `org_admin`, venue_user, manual integration), the whole
+   txn is atomic, and the returned object renders the settings form correctly.
 
 ---
 

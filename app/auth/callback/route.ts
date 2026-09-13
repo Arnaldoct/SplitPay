@@ -49,8 +49,10 @@ export async function GET(request: NextRequest) {
     .set({ supabaseUserId: data.user.id })
     .where(and(eq(users.email, email), isNull(users.supabaseUserId)));
 
-  // DUAL-WRITE during the Phase C gap: also link the legacy venue_users row so
-  // the not-yet-migrated getUserVenue() routes resolve on first login.
+  // DUAL-WRITE during the Phase C gap: also link the legacy venue_users row.
+  // As of C3.4 the dashboard/onboard routes are fully canonical (getUserVenue is
+  // gone), but the still-legacy guest-pay/checkout/webhook paths (C4) read via
+  // venue_users, so keep this link until those migrate.
   // >>> C6 MUST REMOVE this venue_users write once the legacy path is gone. <<<
   await db
     .update(venueUsers)

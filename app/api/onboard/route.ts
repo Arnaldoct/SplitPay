@@ -1,33 +1,28 @@
 /**
  * API Route: Complete Venue Onboarding
  *
- * Saves the venue's business details collected during the onboarding wizard.
- * Updates the existing venue record (created during initial signup).
+ * C3.4: resolves tenancy via requireTenantContext (canonical org/location) and
+ * splits the wizard payload per Decision #3 — org fields (legal/tax/country) go
+ * to `organizations`, location fields (address/contact/branding) go to
+ * `locations`, `name` is synced across both, and paymentModel is derived onto
+ * the location from the country. `onboardingComplete` is set on the ORGANIZATION
+ * only (the sole place the column exists; it is what getAuthContext reads for the
+ * onboarding redirect gate). Both writes run in one transaction so they flip
+ * together.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { venues, venueUsers } from "@/lib/db/schema";
+import { organizations, locations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { createServerClient } from "@/lib/supabase/server";
+import { getDefaultPaymentModel } from "@/lib/payments/factory";
+import { requireTenantContext } from "@/lib/dashboard-auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // Get the venue for this user
-    const venueUser = await db.query.venueUsers.findFirst({
-      where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-      with: { venue: true },
-    });
-
-    if (!venueUser?.venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
     const body = await request.json();
@@ -56,28 +51,45 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update venue with onboarding data
-    await db
-      .update(venues)
-      .set({
-        name: body.name,
-        legalName: body.legalName,
-        businessType: body.businessType,
-        taxId: body.taxId,
-        country: body.country,
-        address: body.address,
-        city: body.city,
-        state: body.state,
-        zip: body.zip,
-        phone: body.phone,
-        timezone: body.timezone,
-        website: body.website || null,
-        logoUrl: body.logoUrl || null,
-        brandColor: body.brandColor || null,
-        onboardingComplete: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(venues.id, venueUser.venue.id));
+    const now = new Date();
+    const country = body.country.toUpperCase();
+
+    // Split the payload across org + location in one transaction so both flip
+    // together (name synced, onboarding_complete set on the org).
+    await db.transaction(async (tx) => {
+      // Org owns legal/tax/country/name + the onboarding gate flag.
+      await tx
+        .update(organizations)
+        .set({
+          name: body.name,
+          legalName: body.legalName,
+          businessType: body.businessType,
+          taxId: body.taxId,
+          country,
+          onboardingComplete: true,
+          updatedAt: now,
+        })
+        .where(eq(organizations.id, ctx.organization.id));
+
+      // Location owns address/contact/branding + derived paymentModel + name.
+      await tx
+        .update(locations)
+        .set({
+          name: body.name,
+          address: body.address,
+          city: body.city,
+          state: body.state,
+          zip: body.zip,
+          phone: body.phone,
+          timezone: body.timezone,
+          website: body.website || null,
+          logoUrl: body.logoUrl || null,
+          brandColor: body.brandColor || null,
+          paymentModel: getDefaultPaymentModel(country),
+          updatedAt: now,
+        })
+        .where(eq(locations.id, ctx.location.id));
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -91,41 +103,31 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const supabase = await createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const ctx = await requireTenantContext();
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.error }, { status: ctx.status });
     }
 
-    // Get the venue for this user
-    const venueUser = await db.query.venueUsers.findFirst({
-      where: (vu, { eq }) => eq(vu.supabaseUserId, user.id),
-      with: { venue: true },
-    });
+    const { organization: org, location } = ctx;
 
-    if (!venueUser?.venue) {
-      return NextResponse.json({ error: "No venue found" }, { status: 404 });
-    }
-
-    // Return current venue data for pre-filling the form
+    // Return the current org + location data for pre-filling the wizard.
     return NextResponse.json({
       venue: {
-        name: venueUser.venue.name,
-        legalName: venueUser.venue.legalName,
-        businessType: venueUser.venue.businessType,
-        taxId: venueUser.venue.taxId,
-        country: venueUser.venue.country,
-        address: venueUser.venue.address,
-        city: venueUser.venue.city,
-        state: venueUser.venue.state,
-        zip: venueUser.venue.zip,
-        phone: venueUser.venue.phone,
-        timezone: venueUser.venue.timezone,
-        website: venueUser.venue.website,
-        logoUrl: venueUser.venue.logoUrl,
-        brandColor: venueUser.venue.brandColor,
-        onboardingComplete: venueUser.venue.onboardingComplete,
+        name: org.name,
+        legalName: org.legalName,
+        businessType: org.businessType,
+        taxId: org.taxId,
+        country: org.country,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        zip: location.zip,
+        phone: location.phone,
+        timezone: location.timezone,
+        website: location.website,
+        logoUrl: location.logoUrl,
+        brandColor: location.brandColor,
+        onboardingComplete: org.onboardingComplete,
       },
     });
   } catch (error) {
